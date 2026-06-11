@@ -1,0 +1,29 @@
+# MySQL data
+data/
+
+# Dependency directories
+node_modules/
+**/node_modules/
+
+# Environment files
+.env
+.env.*
+*.env
+!.env.example
+
+# Build files
+dist/
+web-build/
+build/
+out/
+.expo/
+
+# OS/System files
+.DS_Store
+Thumbs.db
+*.pem
+*.key
+
+# Log files
+*.log
+

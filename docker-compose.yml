@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: rps_mysql_v2
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rps_root_sec_password_2026
+      MYSQL_DATABASE: rps_db_v2
+      MYSQL_USER: rps_user_v2
+      MYSQL_PASSWORD: rps_pass_sec_v2_2026
+    ports:
+      - "127.0.0.1:3306:3306"
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+
+  redis:
+    image: redis:7-alpine
+    container_name: rps_redis_v2
+    restart: always
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - ./data/redis:/data

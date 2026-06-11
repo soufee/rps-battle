@@ -1,0 +1,602 @@
+import { GAME_CONFIG, PLAYER, COMPUTER, FLAG, TRAP, PIECE_TYPES, PIECE_SYMBOLS, BOARD_WIDTH, BOARD_HEIGHT } from './game-config.js';
+import { resolveBattle, getValidMoves } from './game-rules.js';
+import { botRegistry, aiEngine, aiBeliefs } from './ai/index.js';
+
+/**
+ * Generate a shuffled array of `count` RPS types with a guaranteed
+ * minimum of `minPerType` of each type. Prevents pathological random
+ * distributions.
+ */
+export function generateBalancedPieceTypes(count, minPerType) {
+    const floor = Math.max(0, minPerType || 0);
+    const pool = [];
+    for (const type of PIECE_TYPES) {
+        for (let i = 0; i < floor; i++) {
+            pool.push(type);
+        }
+    }
+    while (pool.length < count) {
+        pool.push(PIECE_TYPES[Math.floor(Math.random() * PIECE_TYPES.length)]);
+    }
+    for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const tmp = pool[i];
+        pool[i] = pool[j];
+        pool[j] = tmp;
+    }
+    return pool;
+}
+
+/**
+ * Initialize a fresh game state
+ */
+export function initGame(botId = 'rabbit') {
+    const board = [];
+    for (let r = 0; r < BOARD_HEIGHT; r++) {
+        board[r] = [];
+        for (let c = 0; c < BOARD_WIDTH; c++) {
+            board[r][c] = null;
+        }
+    }
+    
+    return {
+        phase: GAME_CONFIG.PHASES.SETUP,
+        currentPlayer: PLAYER,
+        board: board,
+        selectedPiece: null,
+        playerPieces: [],
+        aiPieces: [],
+        setupPhase: GAME_CONFIG.SETUP_PHASES.FLAG,
+        flagPosition: null,
+        trapPosition: null,
+        battleState: null,
+        botId: botId,
+        gameOver: false,
+        lastMove: null,
+        winner: null,
+        endReason: null,
+        movesWithoutCapture: 0
+    };
+}
+
+/**
+ * Start the playing phase after setups are done
+ */
+export function startGame(gameState) {
+    if (!gameState.flagPosition || !gameState.trapPosition) {
+        throw new Error('Flag and Trap positions must be set before starting the game.');
+    }
+    
+    gameState.phase = GAME_CONFIG.PHASES.PLAYING;
+    gameState.gameOver = false;
+    gameState.currentPlayer = PLAYER;
+    gameState.movesWithoutCapture = 0;
+    
+    // Reset AI state
+    aiEngine.resetMemory();
+    aiBeliefs.init(gameState);
+    
+    // Place pieces
+    placePlayerPieces(gameState);
+    placeComputerPieces(gameState);
+}
+
+/**
+ * Place the player's pieces
+ */
+export function placePlayerPieces(gameState) {
+    const [flagRow, flagCol] = gameState.flagPosition;
+    const [trapRow, trapCol] = gameState.trapPosition;
+    
+    const totalPieces = GAME_CONFIG.GAME.TOTAL_PIECES;
+    const pieceTypes = generateBalancedPieceTypes(totalPieces - 2, 3);
+    let pieceIdx = 0;
+    
+    gameState.playerPieces = [];
+    for (let i = 0; i < totalPieces; i++) {
+        const col = i % 8;
+        const row = Math.floor(i / 8) + 4; // rows 4 & 5
+        
+        let type;
+        let pieceType = null;
+        if (row === flagRow && col === flagCol) {
+            type = FLAG;
+        } else if (row === trapRow && col === trapCol) {
+            type = TRAP;
+        } else {
+            type = 'piece';
+            pieceType = pieceTypes[pieceIdx++];
+        }
+        
+        const piece = {
+            id: `player_${i}`,
+            type: type,
+            pieceType: pieceType,
+            owner: PLAYER,
+            row: row,
+            col: col,
+            revealed: false,
+            immobilized: false,
+            removed: false
+        };
+        
+        gameState.playerPieces.push(piece);
+        gameState.board[row][col] = piece;
+    }
+}
+
+/**
+ * Place the computer's pieces
+ */
+export function placeComputerPieces(gameState) {
+    const botId = gameState.botId || 'rabbit';
+    const bot = botRegistry.get(botId);
+    const { flagIndex: flagPos, trapIndex: trapPos } = bot.chooseFlagAndTrap();
+    
+    let flagCount = 0;
+    let trapCount = 0;
+    
+    const totalPieces = GAME_CONFIG.GAME.TOTAL_PIECES;
+    const pieceTypes = generateBalancedPieceTypes(totalPieces - 2, 3);
+    let pieceIdx = 0;
+    
+    gameState.aiPieces = [];
+    for (let i = 0; i < totalPieces; i++) {
+        const col = i % 8;
+        const row = Math.floor(i / 8); // rows 0 & 1
+        
+        let type;
+        let pieceType = null;
+        if (i === flagPos && flagCount === 0) {
+            type = FLAG;
+            flagCount++;
+        } else if (i === trapPos && trapCount === 0) {
+            type = TRAP;
+            trapCount++;
+        } else {
+            type = 'piece';
+            pieceType = pieceTypes[pieceIdx++];
+        }
+        
+        const piece = {
+            id: `ai_${i}`,
+            type: type,
+            pieceType: pieceType,
+            owner: COMPUTER,
+            row: row,
+            col: col,
+            revealed: false,
+            immobilized: false,
+            removed: false
+        };
+        
+        gameState.aiPieces.push(piece);
+        gameState.board[row][col] = piece;
+    }
+}
+
+/**
+ * Remove a piece from the board
+ */
+export function removePiece(gameState, piece) {
+    gameState.board[piece.row][piece.col] = null;
+    gameState.movesWithoutCapture = 0;
+    
+    if (piece.owner === PLAYER) {
+        const index = gameState.playerPieces.findIndex(p => p.id === piece.id);
+        if (index > -1) {
+            gameState.playerPieces.splice(index, 1);
+        }
+        aiBeliefs.onPieceRemoved(piece.id);
+    } else {
+        const index = gameState.aiPieces.findIndex(p => p.id === piece.id);
+        if (index > -1) {
+            gameState.aiPieces.splice(index, 1);
+        }
+    }
+    
+    piece.removed = true;
+    piece.row = -1;
+    piece.col = -1;
+}
+
+/**
+ * Check if a player's army is in a hopeless state
+ */
+export function isHopeless(pieces) {
+    const activePieces = pieces.filter(p => !p.immobilized && !p.removed);
+    
+    // Only flag left
+    if (activePieces.length === 1 && activePieces[0].type === FLAG) {
+        return true;
+    }
+    
+    // Only flag and immobilized trap left
+    if (pieces.filter(p => !p.removed).length === 2) {
+        const hasFlag = pieces.some(p => p.type === FLAG && !p.removed);
+        const hasImmobilizedTrap = pieces.some(p => p.type === TRAP && p.immobilized && !p.removed);
+        return hasFlag && hasImmobilizedTrap;
+    }
+    
+    return false;
+}
+
+/**
+ * Check game-over conditions
+ */
+export function checkGameEnd(gameState) {
+    if (gameState.playerPieces.length === 0) {
+        endGame(gameState, false, 'no_pieces');
+        return true;
+    }
+    
+    if (gameState.aiPieces.length === 0) {
+        endGame(gameState, true, 'no_pieces');
+        return true;
+    }
+    
+    const playerHopeless = isHopeless(gameState.playerPieces);
+    const aiHopeless = isHopeless(gameState.aiPieces);
+    
+    if (playerHopeless) {
+        endGame(gameState, false, 'hopeless');
+        return true;
+    }
+    
+    if (aiHopeless) {
+        endGame(gameState, true, 'hopeless');
+        return true;
+    }
+    
+    return false;
+}
+
+/**
+ * End game state transition
+ */
+export function endGame(gameState, playerWon, reason) {
+    gameState.phase = GAME_CONFIG.PHASES.FINISHED;
+    gameState.gameOver = true;
+    gameState.winner = playerWon === 'draw' ? 'draw' : (playerWon ? PLAYER : COMPUTER);
+    gameState.endReason = reason;
+    
+    // Reveal all pieces
+    [...gameState.playerPieces, ...gameState.aiPieces].forEach(piece => {
+        piece.revealed = true;
+    });
+}
+
+/**
+ * Pre-commit AI's choice during a tie
+ */
+export function precommitAITieChoice(gameState) {
+    if (!gameState || !gameState.battleState) return;
+    
+    const { attacker, defender } = gameState.battleState;
+    const aiPiece = attacker.owner === COMPUTER ? attacker : defender;
+    const playerPiece = attacker.owner === PLAYER ? attacker : defender;
+    
+    const botId = gameState.botId || 'rabbit';
+    const bot = botRegistry.get(botId);
+    
+    const preChoice = aiEngine.resolveTieChoiceForBot(bot, {
+        gameState: gameState,
+        ourPiece: aiPiece,
+        opponentPiece: playerPiece,
+        battleRow: gameState.battleState.newRow,
+        battleCol: gameState.battleState.newCol
+    });
+    
+    gameState.battleState.aiChoice = preChoice;
+}
+
+/**
+ * Perform a game move
+ */
+export function makeMove(gameState, piece, newRow, newCol) {
+    const oldRow = piece.row;
+    const oldCol = piece.col;
+    const targetPiece = gameState.board[newRow][newCol];
+    
+    if (targetPiece) {
+        // Battle!
+        piece.revealed = true;
+        targetPiece.revealed = true;
+        
+        // Feed belief model
+        if (piece.owner === PLAYER) {
+            const revealedType = piece.type === 'piece' ? piece.pieceType : piece.type;
+            aiBeliefs.onBattle(piece.id, revealedType, null, aiEngine.aiTurnCounter);
+        }
+        if (targetPiece.owner === PLAYER) {
+            const revealedType = targetPiece.type === 'piece' ? targetPiece.pieceType : targetPiece.type;
+            aiBeliefs.onBattle(targetPiece.id, revealedType, null, aiEngine.aiTurnCounter);
+        }
+        
+        // Flag Capture
+        if (targetPiece.type === FLAG) {
+            removePiece(gameState, targetPiece);
+            gameState.board[piece.row][piece.col] = null;
+            piece.row = newRow;
+            piece.col = newCol;
+            gameState.board[newRow][newCol] = piece;
+            gameState.lastMove = { from: [oldRow, oldCol], to: [newRow, newCol] };
+            endGame(gameState, piece.owner === PLAYER, 'flag_captured');
+            return {
+                type: 'battle_flag',
+                attacker: piece,
+                defender: targetPiece,
+                result: 'win',
+                winner: piece.owner
+            };
+        }
+        
+        if (piece.type === FLAG) {
+            endGame(gameState, piece.owner !== PLAYER, 'flag_captured');
+            return {
+                type: 'battle_flag',
+                attacker: piece,
+                defender: targetPiece,
+                result: 'lose',
+                winner: targetPiece.owner
+            };
+        }
+        
+        // Trap
+        if (targetPiece.type === TRAP) {
+            removePiece(gameState, piece);
+            targetPiece.immobilized = true;
+            gameState.lastMove = { from: [oldRow, oldCol], to: [newRow, newCol] };
+            checkGameEnd(gameState);
+            return {
+                type: 'battle_trap',
+                attacker: piece,
+                defender: targetPiece,
+                result: 'lose',
+                winner: targetPiece.owner
+            };
+        }
+        
+        if (piece.type === TRAP) {
+            removePiece(gameState, targetPiece);
+            gameState.board[piece.row][piece.col] = null;
+            piece.row = newRow;
+            piece.col = newCol;
+            gameState.board[newRow][newCol] = piece;
+            piece.immobilized = true;
+            gameState.lastMove = { from: [oldRow, oldCol], to: [newRow, newCol] };
+            checkGameEnd(gameState);
+            return {
+                type: 'battle_trap',
+                attacker: piece,
+                defender: targetPiece,
+                result: 'win',
+                winner: piece.owner
+            };
+        }
+        
+        // RPS Battle
+        const result = resolveBattle(piece.pieceType, targetPiece.pieceType);
+        
+        if (result === 'win') {
+            removePiece(gameState, targetPiece);
+            gameState.board[piece.row][piece.col] = null;
+            piece.row = newRow;
+            piece.col = newCol;
+            gameState.board[newRow][newCol] = piece;
+            gameState.lastMove = { from: [oldRow, oldCol], to: [newRow, newCol] };
+            checkGameEnd(gameState);
+            return {
+                type: 'battle',
+                attacker: { ...piece },
+                defender: { ...targetPiece },
+                result: 'win',
+                winner: piece.owner
+            };
+        } else if (result === 'lose') {
+            removePiece(gameState, piece);
+            gameState.lastMove = { from: [oldRow, oldCol], to: [newRow, newCol] };
+            checkGameEnd(gameState);
+            return {
+                type: 'battle',
+                attacker: { ...piece },
+                defender: { ...targetPiece },
+                result: 'lose',
+                winner: targetPiece.owner
+            };
+        } else {
+            // Draw
+            gameState.battleState = {
+                attacker: piece,
+                defender: targetPiece,
+                newRow: newRow,
+                newCol: newCol,
+                isPlayerFirst: piece.owner === PLAYER,
+                aiChoice: null,
+                playerChoice: null,
+                drawRound: 1
+            };
+            
+            precommitAITieChoice(gameState);
+            return {
+                type: 'battle',
+                attacker: { ...piece },
+                defender: { ...targetPiece },
+                result: 'draw'
+            };
+        }
+    } else {
+        // Simple move
+        gameState.board[piece.row][piece.col] = null;
+        piece.row = newRow;
+        piece.col = newCol;
+        gameState.board[newRow][newCol] = piece;
+        gameState.lastMove = { from: [oldRow, oldCol], to: [newRow, newCol] };
+        
+        if (piece.owner === PLAYER) {
+            aiEngine.playerPatternAnalysis.moves.push({
+                from: { row: oldRow, col: oldCol },
+                to: { row: newRow, col: newCol },
+                piece: piece
+            });
+            aiBeliefs.onPlayerMove(piece.id, oldRow, oldCol, newRow, newCol, gameState);
+        }
+        
+        checkGameEnd(gameState);
+        return {
+            type: 'move',
+            piece: piece,
+            from: [oldRow, oldCol],
+            to: [newRow, newCol]
+        };
+    }
+}
+
+/**
+ * Handle a player's choice during a tie-break
+ */
+export function makeChoice(gameState, newType) {
+    if (!gameState.battleState) return { success: false };
+    
+    const { attacker, defender, newRow, newCol } = gameState.battleState;
+    gameState.battleState.playerChoice = newType;
+    
+    if (attacker.owner === PLAYER) {
+        attacker.pieceType = newType;
+    } else {
+        defender.pieceType = newType;
+    }
+    
+    const aiChoice = gameState.battleState.aiChoice;
+    const aiPiece = attacker.owner === COMPUTER ? attacker : defender;
+    aiPiece.pieceType = aiChoice;
+    
+    const result = resolveBattle(attacker.pieceType, defender.pieceType);
+    const drawRound = gameState.battleState.drawRound;
+    
+    if (result === 'win') {
+        removePiece(gameState, defender);
+        const oldRow = attacker.row;
+        const oldCol = attacker.col;
+        gameState.board[attacker.row][attacker.col] = null;
+        attacker.row = newRow;
+        attacker.col = newCol;
+        gameState.board[newRow][newCol] = attacker;
+        gameState.lastMove = { from: [oldRow, oldCol], to: [newRow, newCol] };
+        
+        gameState.battleState = null;
+        checkGameEnd(gameState);
+        return {
+            type: 'tie_resolved',
+            attacker,
+            defender,
+            result: 'win',
+            winner: attacker.owner,
+            playerChoice: newType,
+            aiChoice: aiChoice
+        };
+    } else if (result === 'lose') {
+        removePiece(gameState, attacker);
+        gameState.lastMove = { from: [attacker.row, attacker.col], to: [defender.row, defender.col] };
+        
+        gameState.battleState = null;
+        checkGameEnd(gameState);
+        return {
+            type: 'tie_resolved',
+            attacker,
+            defender,
+            result: 'lose',
+            winner: defender.owner,
+            playerChoice: newType,
+            aiChoice: aiChoice
+        };
+    } else {
+        // Draw again
+        const nextRound = drawRound + 1;
+        gameState.battleState.drawRound = nextRound;
+        
+        if (nextRound > 6) {
+            // Mutual Annihilation
+            const attRow = attacker.row;
+            const attCol = attacker.col;
+            const defRow = defender.row;
+            const defCol = defender.col;
+            removePiece(gameState, attacker);
+            removePiece(gameState, defender);
+            gameState.lastMove = { from: [attRow, attCol], to: [defRow, defCol] };
+            gameState.battleState = null;
+            checkGameEnd(gameState);
+            return {
+                type: 'mutual_annihilation',
+                attacker,
+                defender,
+                playerChoice: newType,
+                aiChoice: aiChoice
+            };
+        }
+        
+        gameState.battleState.lastRound = {
+            playerChoice: newType,
+            opponentChoice: aiChoice,
+            attackerType: attacker.pieceType,
+            defenderType: defender.pieceType
+        };
+
+        precommitAITieChoice(gameState);
+        return {
+            type: 'tie_draw',
+            drawRound: nextRound,
+            playerChoice: newType,
+            aiChoice: aiChoice
+        };
+    }
+}
+
+/**
+ * End current turn and flip active player
+ */
+export function endTurn(gameState) {
+    if (gameState.gameOver) return;
+    
+    gameState.movesWithoutCapture = (gameState.movesWithoutCapture || 0) + 1;
+    const drawLimit = GAME_CONFIG.GAME.DRAW_NO_CAPTURE_LIMIT || 20;
+    if (gameState.movesWithoutCapture >= drawLimit) {
+        endGame(gameState, 'draw', 'no_captures_draw');
+        return;
+    }
+    
+    gameState.currentPlayer = gameState.currentPlayer === PLAYER ? COMPUTER : PLAYER;
+    
+    if (gameState.currentPlayer === COMPUTER) {
+        aiEngine.aiTurnCounter++;
+        // Tick beliefs to let bot estimate stagnation
+        aiBeliefs.tick(aiEngine.aiTurnCounter);
+    }
+}
+
+/**
+ * Execute computer bot turn
+ */
+export function makeBotMove(gameState) {
+    if (gameState.gameOver || gameState.currentPlayer !== COMPUTER || gameState.battleState) {
+        return { type: 'error', reason: 'Not bot turn' };
+    }
+    
+    const bot = botRegistry.get(gameState.botId);
+    const move = bot.move(gameState);
+    
+    if (move) {
+        const result = makeMove(gameState, move.piece, move.row, move.col);
+        if (result.type !== 'battle' || result.result !== 'draw') {
+            endTurn(gameState);
+        }
+        return result;
+    } else {
+        // No moves left for bot -> player wins
+        endGame(gameState, true, 'no_moves');
+        return {
+            type: 'no_moves',
+            winner: PLAYER
+        };
+    }
+}

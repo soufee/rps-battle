@@ -1,0 +1,134 @@
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  player
+  admin
+}
+
+enum Platform {
+  web
+  android
+  ios
+  vk
+  facebook
+}
+
+enum FriendStatus {
+  PENDING
+  ACCEPTED
+  BLOCKED
+}
+
+model User {
+  id            String    @id @default(uuid())
+  email         String?   @unique
+  nickname      String    @unique
+  avatarUrl     String?   @db.VarChar(512)
+  role          Role      @default(player)
+  platform      Platform  @default(web)
+  externalId    String?   // ID in external social networks (Google, VK, FB)
+  isBanned      Boolean   @default(false)
+  bannedReason  String?   @db.Text
+  bannedUntil   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  stats         Stats?
+  botOpponentStats BotOpponentStats[]
+  pvpOpponentStats PvpOpponentStats[] @relation("UserPvpStats")
+  pvpOpponentStatsAgainst PvpOpponentStats[] @relation("OpponentPvpStats")
+
+  // Relations for friendship
+  sentFriends   Friend[]  @relation("SentRequests")
+  recvFriends   Friend[]  @relation("ReceivedRequests")
+
+  // Matches played
+  matchesAsP1   MatchHistory[] @relation("Player1Matches")
+  matchesAsP2   MatchHistory[] @relation("Player2Matches")
+  wonMatches    MatchHistory[] @relation("WonMatches")
+
+  @@index([externalId, platform])
+}
+
+model Stats {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  wins            Int      @default(0)
+  losses          Int      @default(0)
+  draws           Int      @default(0)
+  ratingMmr       Int      @default(1000)
+  tournamentStage Int      @default(0)
+  tournamentVersion Int    @default(1)
+}
+
+/// Per-bot matchup record (PvE): wins/losses against each AI opponent.
+model BotOpponentStats {
+  id           String    @id @default(uuid())
+  userId       String
+  botId        String    @db.VarChar(64)
+  wins         Int       @default(0)
+  losses       Int       @default(0)
+  draws        Int       @default(0)
+  gamesPlayed  Int       @default(0)
+  lastPlayedAt DateTime?
+  updatedAt    DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, botId])
+  @@index([userId])
+}
+
+/// Per-human opponent record (PvP only).
+model PvpOpponentStats {
+  id           String    @id @default(uuid())
+  userId       String
+  opponentId   String
+  wins         Int       @default(0)
+  losses       Int       @default(0)
+  draws        Int       @default(0)
+  gamesPlayed  Int       @default(0)
+  lastPlayedAt DateTime?
+  updatedAt    DateTime  @updatedAt
+
+  user     User @relation("UserPvpStats", fields: [userId], references: [id], onDelete: Cascade)
+  opponent User @relation("OpponentPvpStats", fields: [opponentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, opponentId])
+  @@index([userId])
+}
+
+model Friend {
+  id        String       @id @default(uuid())
+  userId1   String
+  userId2   String
+  status    FriendStatus @default(PENDING)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  user1     User         @relation("SentRequests", fields: [userId1], references: [id], onDelete: Cascade)
+  user2     User         @relation("ReceivedRequests", fields: [userId2], references: [id], onDelete: Cascade)
+
+  @@unique([userId1, userId2])
+}
+
+model MatchHistory {
+  id        String   @id @default(uuid())
+  player1Id String
+  player2Id String
+  winnerId  String?
+  score     String   // e.g. "2-1" or "3-3"
+  playedAt  DateTime @default(now())
+
+  player1   User     @relation("Player1Matches", fields: [player1Id], references: [id], onDelete: Cascade)
+  player2   User     @relation("Player2Matches", fields: [player2Id], references: [id], onDelete: Cascade)
+  winner    User?    @relation("WonMatches", fields: [winnerId], references: [id], onDelete: Cascade)
+}
