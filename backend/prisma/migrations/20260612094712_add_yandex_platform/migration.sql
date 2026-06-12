@@ -1,2 +1,2 @@
 -- AlterTable
-ALTER TABLE `user` MODIFY `platform` ENUM('web', 'android', 'ios', 'vk', 'facebook', 'yandex') NOT NULL DEFAULT 'web';
+ALTER TABLE `User` MODIFY `platform` ENUM('web', 'android', 'ios', 'vk', 'facebook', 'yandex') NOT NULL DEFAULT 'web';

@@ -1,5 +1,5 @@
 -- AlterTable
-ALTER TABLE `stats` ADD COLUMN `tournamentStage` INTEGER NOT NULL DEFAULT 0,
+ALTER TABLE `Stats` ADD COLUMN `tournamentStage` INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN `tournamentVersion` INTEGER NOT NULL DEFAULT 1;
 
 -- CreateTable
