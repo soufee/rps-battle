@@ -23,6 +23,8 @@ import {
   nativeAuthGoogle,
   authVKMiniApp,
   authFacebookInstant,
+  authYandexGames,
+  authGuest,
   mintToken
 } from './controllers/auth.js';
 import { updateStats, getProfile, resetTournament } from './controllers/stats.js';
@@ -73,6 +75,8 @@ app.post('/api/v2/stats/reset-tournament', authenticateToken, resetTournament);
 app.post('/api/v2/auth/google-native', nativeAuthGoogle);
 app.post('/api/v2/auth/vk', authVKMiniApp);
 app.post('/api/v2/auth/facebook', authFacebookInstant);
+app.post('/api/v2/auth/yandex', authYandexGames);
+app.post('/api/v2/auth/guest', authGuest);
 
 // Serve Static built files for React Native Web Client
 const clientDistPath = path.join(__dirname, '../../client/dist');

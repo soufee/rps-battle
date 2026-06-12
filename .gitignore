@@ -31,3 +31,9 @@ Thumbs.db
 deploy.sh
 
 
+
+# Claude Code local config
+.claude/
+
+# Build archives for platform uploads
+*.zip

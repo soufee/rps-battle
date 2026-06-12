@@ -12,7 +12,9 @@ import {
   Modal,
   useWindowDimensions,
   Platform,
-  TextInput
+  TextInput,
+  Animated,
+  Easing
 } from 'react-native';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -46,8 +48,18 @@ import {
 
 const getBaseUrl = () => {
   if (Platform.OS === 'web') {
-    if (typeof window !== 'undefined' && window.location) {
-      return window.location.origin;
+    if (typeof window !== 'undefined') {
+      // Сборки, размещённые на чужом CDN (Яндекс Игры, FB Instant), ходят на наш API-домен,
+      // который патчится в index.html скриптом scripts/patch-web-html.js
+      if (window.__RPS_API_URL__) {
+        return window.__RPS_API_URL__;
+      }
+      if (window.location) {
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+          return 'http://localhost:3001';
+        }
+        return window.location.origin;
+      }
     }
   } else {
     if (__DEV__) {
@@ -273,6 +285,54 @@ function SurfaceCard({ children, style, accent }) {
 
 const TURN_TIME_LIMIT = 120;
 const SETUP_TIME_LIMIT = 60;
+
+/** Брендированный экран загрузки: логотип, имя игры и бегущий прогресс-бар. */
+function BrandSplash({ caption = 'Загрузка…' }) {
+  const sweep = useRef(new Animated.Value(0)).current;
+  const pulse = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const sweepLoop = Animated.loop(
+      Animated.timing(sweep, {
+        toValue: 1,
+        duration: 1100,
+        easing: Easing.inOut(Easing.ease),
+        useNativeDriver: false
+      })
+    );
+    const pulseLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1.08, duration: 700, easing: Easing.inOut(Easing.ease), useNativeDriver: false }),
+        Animated.timing(pulse, { toValue: 1, duration: 700, easing: Easing.inOut(Easing.ease), useNativeDriver: false })
+      ])
+    );
+    sweepLoop.start();
+    pulseLoop.start();
+    return () => {
+      sweepLoop.stop();
+      pulseLoop.stop();
+    };
+  }, [sweep, pulse]);
+
+  const barTranslate = sweep.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['-40%', '110%']
+  });
+
+  return (
+    <View style={[styles.container, styles.appBg, styles.splashWrap]}>
+      <Animated.View style={[styles.splashLogoBadge, { transform: [{ scale: pulse }] }]}>
+        <Text style={styles.splashLogoEmoji}>🪨📄✂️</Text>
+      </Animated.View>
+      <Text style={styles.splashTitle}>RPS Battle</Text>
+      <Text style={styles.splashTagline}>Тактика · Камень · Бумага · Ножницы</Text>
+      <View style={styles.splashBarTrack}>
+        <Animated.View style={[styles.splashBarFill, { left: barTranslate }]} />
+      </View>
+      <Text style={styles.splashCaption}>{caption}</Text>
+    </View>
+  );
+}
 
 function countActivePieces(pieces) {
   return pieces.filter((p) => !p.removed && p.row >= 0).length;
@@ -533,6 +593,8 @@ export default function App() {
     const initializeAuth = async () => {
       let isVK = false;
       let isFB = false;
+      const isYandex = typeof window !== 'undefined'
+        && (window.__RPS_PLATFORM__ === 'yandex' || typeof window.YaGames !== 'undefined');
 
       if (typeof window !== 'undefined' && window.location) {
         const params = new URLSearchParams(window.location.search);
@@ -543,6 +605,52 @@ export default function App() {
 
       if (typeof window !== 'undefined' && window.FBInstant) {
         isFB = true;
+      }
+
+      if (isYandex && typeof window.YaGames !== 'undefined') {
+        try {
+          const ysdk = await window.YaGames.init();
+          window.__YSDK__ = ysdk; // оставляем для рекламы/лидербордов
+
+          let payload = null;
+          try {
+            const player = await ysdk.getPlayer({ signed: true });
+            payload = {
+              signature: player.signature || null,
+              id: player.getUniqueID(),
+              name: player.getName() || null,
+              avatar: typeof player.getPhoto === 'function' ? player.getPhoto('medium') : null
+            };
+          } catch (playerErr) {
+            // Игрок не авторизован в Яндексе — играем анонимным yandex-профилем устройства
+            let anonId = await storage.getItem('yandex_anon_id');
+            if (!anonId) {
+              anonId = 'ya_anon_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+              await storage.setItem('yandex_anon_id', anonId);
+            }
+            payload = { signature: null, id: anonId, name: null, avatar: null };
+          }
+
+          const res = await fetch(`${BASE_URL}/api/v2/auth/yandex`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            await storage.setItem('token', data.accessToken);
+            await storage.setItem('refreshToken', data.refreshToken);
+            setToken(data.accessToken);
+            setUser(data.user);
+            setLoading(false);
+            // Сообщаем Яндексу, что игра загружена и готова
+            try { ysdk.features?.LoadingAPI?.ready?.(); } catch (e) {}
+            return;
+          }
+        } catch (err) {
+          console.error('Yandex Games login error:', err);
+        }
       }
 
       if (isVK) {
@@ -628,6 +736,13 @@ export default function App() {
 
       if (Platform.OS === 'web') {
         const savedToken = await storage.getItem('token');
+        if (!savedToken && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+          const logoutFlag = await storage.getItem('logout_flag');
+          if (logoutFlag !== 'true') {
+            window.location.href = `${BASE_URL}/api/v2/auth/dev`;
+            return;
+          }
+        }
         if (savedToken) {
           setToken(savedToken);
           fetchUserProfile(savedToken);
@@ -648,23 +763,6 @@ export default function App() {
 
     initializeAuth();
   }, []);
-
-  const [boardSkin, setBoardSkin] = useState('classic');
-
-  useEffect(() => {
-    const loadSkin = async () => {
-      const savedSkin = await storage.getItem('boardSkin');
-      if (savedSkin === 'animated' || savedSkin === 'classic') {
-        setBoardSkin(savedSkin);
-      }
-    };
-    loadSkin();
-  }, []);
-
-  const changeSkin = async (skin) => {
-    setBoardSkin(skin);
-    await storage.setItem('boardSkin', skin);
-  };
 
   const handlePieceDragStart = (e, visualRow, visualCol) => {
     if (!game || game.gameOver) return;
@@ -1199,15 +1297,50 @@ export default function App() {
     }
   };
 
-  const handleDevLogin = () => {
+  const handleDevLogin = async () => {
     if (typeof window !== 'undefined') {
+      await storage.removeItem('logout_flag');
       window.location.href = `${BASE_URL}/api/v2/auth/dev`;
+    }
+  };
+
+  // Гостевой вход: анонимный аккаунт, привязанный к устройству.
+  // Единственный способ входа на iOS/Android без настройки нативного OAuth.
+  const handleGuestLogin = async () => {
+    try {
+      setError(null);
+      let deviceId = await storage.getItem('guest_device_id');
+      if (!deviceId) {
+        deviceId = 'guest_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+        await storage.setItem('guest_device_id', deviceId);
+      }
+      const platform = Platform.OS === 'ios' ? 'ios' : Platform.OS === 'android' ? 'android' : 'web';
+      const res = await fetch(`${BASE_URL}/api/v2/auth/guest`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deviceId, platform })
+      });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      await storage.setItem('token', data.accessToken);
+      await storage.setItem('refreshToken', data.refreshToken);
+      await storage.removeItem('logout_flag');
+      setToken(data.accessToken);
+      setUser(data.user);
+    } catch (err) {
+      console.error('Guest login error:', err);
+      setError('Не удалось войти гостем. Проверьте соединение с интернетом.');
     }
   };
 
   const handleLogout = async () => {
     await storage.removeItem('token');
     await storage.removeItem('refreshToken');
+    if (Platform.OS === 'web') {
+      await storage.setItem('logout_flag', 'true');
+    }
     setToken(null);
     setUser(null);
     setError(null);
@@ -1679,45 +1812,60 @@ export default function App() {
   };
 
   if (loading) {
-    return (
-      <View style={[styles.container, styles.appBg]}>
-        <PageShell narrow style={styles.centeredShell}>
-          <SurfaceCard style={styles.loadingCard}>
-            <ActivityIndicator size="large" color="#c2410c" />
-            <Text style={styles.loadingText}>Загрузка RPS Battle v2...</Text>
-          </SurfaceCard>
-        </PageShell>
-      </View>
-    );
+    return <BrandSplash />;
   }
 
   // --- Login / Splash Screen ---
   if (!user) {
+    const isWebPlatform = Platform.OS === 'web';
+    const isLocalhost = isWebPlatform
+      && typeof window !== 'undefined'
+      && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
     return (
       <View style={[styles.container, styles.appBg]}>
         <StatusBar style="dark" />
         <SafeAreaView style={styles.flex1}>
           <View style={styles.authScreen}>
             <PageShell narrow padH={layout.padH}>
+              <View style={styles.authHero}>
+                <View style={styles.splashLogoBadge}>
+                  <Text style={styles.splashLogoEmoji}>🪨📄✂️</Text>
+                </View>
+                <Text style={styles.splashTitle}>RPS Battle</Text>
+                <Text style={styles.splashTagline}>Тактика · Камень · Бумага · Ножницы</Text>
+              </View>
+
               <SurfaceCard style={[styles.authCard, layout.compact && styles.authCardCompact]}>
-                <Text style={styles.brandMark}>⚔️</Text>
-                <Text style={styles.logoText}>
-                  RPS Battle <Text style={styles.v2Badge}>v2</Text>
-                </Text>
+                <Text style={styles.authCardTitle}>Захвати вражеский флаг</Text>
                 <Text style={styles.subtitle}>
-                  Тактические бои камень·бумага·ножницы с ИИ-оппонентами
+                  Скрытые фигуры, ловушки и дуэли «камень-ножницы-бумага».
+                  Сражайся с 20 ИИ-ботами или с живыми игроками онлайн.
                 </Text>
 
-                <TouchableOpacity style={styles.loginBtn} onPress={handleLogin}>
-                  <Text style={styles.loginBtnText}>Войти через Google</Text>
+                {isWebPlatform && (
+                  <TouchableOpacity style={styles.loginBtn} onPress={handleLogin}>
+                    <Text style={styles.loginBtnText}>Войти через Google</Text>
+                  </TouchableOpacity>
+                )}
+
+                <TouchableOpacity
+                  style={[styles.loginBtnGuest, !isWebPlatform && styles.loginBtnGuestPrimary]}
+                  onPress={handleGuestLogin}
+                >
+                  <Text style={[styles.loginBtnGuestText, !isWebPlatform && styles.loginBtnGuestTextPrimary]}>
+                    Играть без регистрации
+                  </Text>
                 </TouchableOpacity>
 
-
+                {isLocalhost && (
+                  <TouchableOpacity style={styles.loginBtnDev} onPress={handleDevLogin}>
+                    <Text style={styles.loginBtnDevText}>Войти как DevTester (Admin)</Text>
+                  </TouchableOpacity>
+                )}
 
                 {error && <Text style={styles.errorText}>{error}</Text>}
               </SurfaceCard>
             </PageShell>
-            <Text style={styles.footerText}>React Native · Node.js · MySQL</Text>
           </View>
         </SafeAreaView>
       </View>
@@ -2093,27 +2241,6 @@ export default function App() {
                 </TouchableOpacity>
               </View>
 
-              <View style={styles.settingsRow}>
-                <Text style={styles.settingsLabel}>Скин доски и фигур:</Text>
-                <View style={styles.skinToggleGroup}>
-                  <TouchableOpacity
-                    style={[styles.skinToggleBtn, boardSkin === 'classic' && styles.skinToggleBtnActive]}
-                    onPress={() => changeSkin('classic')}
-                  >
-                    <Text style={[styles.skinToggleBtnText, boardSkin === 'classic' && styles.skinToggleBtnTextActive]}>
-                      Классика (Эмодзи)
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.skinToggleBtn, boardSkin === 'animated' && styles.skinToggleBtnActive]}
-                    onPress={() => changeSkin('animated')}
-                  >
-                    <Text style={[styles.skinToggleBtnText, boardSkin === 'animated' && styles.skinToggleBtnTextActive]}>
-                      Анимация
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
             </SurfaceCard>
 
             <View style={[styles.blockRow, isWide && styles.blockRowWide, { gap: layout.gap }]}>
@@ -2156,23 +2283,47 @@ export default function App() {
                   { padding: layout.cardPad, marginBottom: layout.gap }
                 ]}
               >
-                <Text style={styles.cardTitle}>🎲 Режим игры</Text>
+                <Text style={styles.cardTitle}>🎲 Во что играем?</Text>
                 <TouchableOpacity
-                  style={styles.actionBtn}
+                  style={styles.modeTileHero}
+                  activeOpacity={0.85}
                   onPress={openArena}
                 >
-                  <Text style={styles.actionBtnText}>PvP арена</Text>
+                  <Text style={styles.modeTileEmoji}>⚡</Text>
+                  <View style={styles.modeTileBody}>
+                    <Text style={styles.modeTileHeroTitle}>PvP арена</Text>
+                    <Text style={styles.modeTileHeroDesc}>Дуэли с живыми игроками за рейтинг</Text>
+                  </View>
+                  <Text style={styles.modeTileChevron}>›</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.actionBtn, styles.primaryBtnOutline]}
-                  onPress={() => {
-                    setProfileMenuOpen(false);
-                    setScreen('bot_select');
-                    setBotSelectTab('free');
-                  }}
-                >
-                  <Text style={styles.primaryBtnOutlineText}>Сыграть с ботом</Text>
-                </TouchableOpacity>
+                <View style={styles.modeTileRow}>
+                  <TouchableOpacity
+                    style={styles.modeTile}
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      setProfileMenuOpen(false);
+                      setScreen('bot_select');
+                      setBotSelectTab('free');
+                    }}
+                  >
+                    <Text style={styles.modeTileEmoji}>🤖</Text>
+                    <Text style={styles.modeTileTitle}>Боты</Text>
+                    <Text style={styles.modeTileDesc}>20 ИИ-соперников</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.modeTile}
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      setProfileMenuOpen(false);
+                      setScreen('bot_select');
+                      setBotSelectTab('tournament');
+                    }}
+                  >
+                    <Text style={styles.modeTileEmoji}>🏆</Text>
+                    <Text style={styles.modeTileTitle}>Башня</Text>
+                    <Text style={styles.modeTileDesc}>Испытание 20 этапов</Text>
+                  </TouchableOpacity>
+                </View>
               </SurfaceCard>
             </View>
 
@@ -2819,11 +2970,7 @@ export default function App() {
                   // Style configurations
                   const isDarkCell = (r + c) % 2 !== 0;
                   let cellStyle = [styles.cell];
-                  if (boardSkin === 'animated') {
-                    cellStyle.push(isDarkCell ? styles.cartoonDarkCell : styles.cartoonLightCell);
-                  } else {
-                    cellStyle.push(isDarkCell ? styles.darkCell : styles.lightCell);
-                  }
+                  cellStyle.push(isDarkCell ? styles.cartoonDarkCell : styles.cartoonLightCell);
                   if (isSetupAllowed) {
                     cellStyle.push(isDarkCell ? styles.setupZoneDark : styles.setupZoneLight);
                   }
@@ -2918,27 +3065,12 @@ export default function App() {
                         onDragOver={dropProps.onDragOver}
                         onDrop={dropProps.onDrop}
                       >
-                        {symbol && (
-                          boardSkin === 'animated' ? (
-                            renderCartoonPiece(
-                              isSetup ? (symbol === PIECE_SYMBOLS[FLAG] ? FLAG : TRAP) : (cell ? cell.type : FLAG),
-                              cell ? cell.pieceType : null,
-                              isEnemy,
-                              isImmobilized,
-                              isSetup ? true : (cell ? cell.revealed : false)
-                            )
-                          ) : (
-                            <View style={[
-                              styles.pieceContainer,
-                              isEnemy ? styles.enemyPiece : styles.playerPiece,
-                              isImmobilized && styles.immobilizedPiece,
-                              cell && cell.revealed && styles.revealedPiece
-                            ]}>
-                              <Text style={[styles.pieceText, { fontSize: layout.pieceFontSize }]}>
-                                {symbol}
-                              </Text>
-                            </View>
-                          )
+                        {symbol && renderCartoonPiece(
+                          isSetup ? (symbol === PIECE_SYMBOLS[FLAG] ? FLAG : TRAP) : (cell ? cell.type : FLAG),
+                          cell ? cell.pieceType : null,
+                          isEnemy,
+                          isImmobilized,
+                          isSetup ? true : (cell ? cell.revealed : false)
                         )}
                         {isPossibleMove && !cell && (
                           <View
@@ -2972,27 +3104,12 @@ export default function App() {
                         }
                       }}
                     >
-                      {symbol && (
-                        boardSkin === 'animated' ? (
-                          renderCartoonPiece(
-                            isSetup ? (symbol === PIECE_SYMBOLS[FLAG] ? FLAG : TRAP) : (cell ? cell.type : FLAG),
-                            cell ? cell.pieceType : null,
-                            isEnemy,
-                            isImmobilized,
-                            isSetup ? true : (cell ? cell.revealed : false)
-                          )
-                        ) : (
-                          <View style={[
-                            styles.pieceContainer,
-                            isEnemy ? styles.enemyPiece : styles.playerPiece,
-                            isImmobilized && styles.immobilizedPiece,
-                            cell && cell.revealed && styles.revealedPiece
-                          ]}>
-                            <Text style={[styles.pieceText, { fontSize: layout.pieceFontSize }]}>
-                              {symbol}
-                            </Text>
-                          </View>
-                        )
+                      {symbol && renderCartoonPiece(
+                        isSetup ? (symbol === PIECE_SYMBOLS[FLAG] ? FLAG : TRAP) : (cell ? cell.type : FLAG),
+                        cell ? cell.pieceType : null,
+                        isEnemy,
+                        isImmobilized,
+                        isSetup ? true : (cell ? cell.revealed : false)
                       )}
                       {/* Valid move indicator on empty cells */}
                       {isPossibleMove && !cell && (
@@ -3462,62 +3579,158 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
+  // --- Splash / Loading screen ---
+  splashWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+  },
+  splashLogoBadge: {
+    width: 112,
+    height: 112,
+    borderRadius: 32,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(100, 75, 50, 0.1)',
+    marginBottom: 20,
+    ...(Platform.OS === 'web'
+      ? { boxShadow: '0 12px 40px rgba(194, 65, 12, 0.18)' }
+      : {
+          shadowColor: '#c2410c',
+          shadowOffset: { width: 0, height: 10 },
+          shadowOpacity: 0.18,
+          shadowRadius: 20,
+          elevation: 8,
+        }),
+  },
+  splashLogoEmoji: {
+    fontSize: 34,
+    letterSpacing: -2,
+  },
+  splashTitle: {
+    fontSize: 34,
+    fontWeight: '900',
+    color: '#1c1917',
+    letterSpacing: 0.5,
+    textAlign: 'center',
+  },
+  splashTagline: {
+    marginTop: 6,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#8a7563',
+    textAlign: 'center',
+  },
+  splashBarTrack: {
+    marginTop: 36,
+    width: 220,
+    maxWidth: '80%',
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(194, 65, 12, 0.12)',
+    overflow: 'hidden',
+  },
+  splashBarFill: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: '36%',
+    borderRadius: 4,
+    backgroundColor: '#ea580c',
+  },
+  splashCaption: {
+    marginTop: 14,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#a8a29e',
+  },
+  // --- Auth screen ---
   authScreen: {
     flex: 1,
     justifyContent: 'center',
     paddingVertical: 24,
   },
+  authHero: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
   authCard: {
     alignItems: 'center',
-    paddingVertical: 36,
+    paddingVertical: 32,
     paddingHorizontal: 28,
+    borderRadius: 24,
   },
   authCardCompact: {
-    paddingVertical: 28,
+    paddingVertical: 26,
     paddingHorizontal: 18,
   },
-  brandMark: {
-    fontSize: 48,
-    marginBottom: 8,
-  },
-  logoText: {
-    fontSize: 26,
+  authCardTitle: {
+    fontSize: 19,
     fontWeight: '800',
     color: '#1c1917',
-    marginBottom: 8,
+    marginBottom: 10,
     textAlign: 'center',
-    letterSpacing: 0.5,
-  },
-  v2Badge: {
-    color: '#d97706', // Accent amber
-    fontSize: 18,
-    fontWeight: '800',
-    backgroundColor: '#faf7f2',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(180, 160, 130, 0.25)',
   },
   subtitle: {
     color: '#6b5744', // Dark brownish grey
     fontSize: 14,
     textAlign: 'center',
-    marginBottom: 40,
+    marginBottom: 28,
     lineHeight: 22,
   },
   loginBtn: {
     alignSelf: 'stretch',
-    backgroundColor: '#c2410c',
-    paddingVertical: 14,
-    borderRadius: 12,
+    backgroundColor: '#ea580c',
+    paddingVertical: 16,
+    borderRadius: 16,
     alignItems: 'center',
     marginTop: 8,
+    ...(Platform.OS === 'web'
+      ? { boxShadow: '0 6px 18px rgba(234, 88, 12, 0.35)' }
+      : {
+          shadowColor: '#ea580c',
+          shadowOffset: { width: 0, height: 6 },
+          shadowOpacity: 0.3,
+          shadowRadius: 12,
+          elevation: 6,
+        }),
   },
   loginBtnText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '800',
+  },
+  loginBtnGuest: {
+    alignSelf: 'stretch',
+    backgroundColor: 'transparent',
+    borderWidth: 2,
+    borderColor: '#ea580c',
+    paddingVertical: 14,
+    borderRadius: 16,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  loginBtnGuestPrimary: {
+    backgroundColor: '#ea580c',
+    ...(Platform.OS === 'web'
+      ? { boxShadow: '0 6px 18px rgba(234, 88, 12, 0.35)' }
+      : {
+          shadowColor: '#ea580c',
+          shadowOffset: { width: 0, height: 6 },
+          shadowOpacity: 0.3,
+          shadowRadius: 12,
+          elevation: 6,
+        }),
+  },
+  loginBtnGuestText: {
+    color: '#c2410c',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  loginBtnGuestTextPrimary: {
+    color: '#fff',
   },
   loginBtnDev: {
     alignSelf: 'stretch',
@@ -3538,13 +3751,6 @@ const styles = StyleSheet.create({
     color: '#dc2626',
     marginTop: 20,
     fontSize: 14,
-  },
-  footerText: {
-    color: '#a8a29e',
-    textAlign: 'center',
-    fontSize: 12,
-    marginTop: 16,
-    marginBottom: 8,
   },
   profileBarCard: {
     marginBottom: LAYOUT.gap,
@@ -3861,6 +4067,75 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '700',
     fontSize: 16,
+  },
+  // --- Lobby mode tiles ---
+  modeTileHero: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ea580c',
+    borderRadius: 18,
+    paddingVertical: 18,
+    paddingHorizontal: 18,
+    marginBottom: 12,
+    gap: 14,
+    ...(Platform.OS === 'web'
+      ? { boxShadow: '0 8px 22px rgba(234, 88, 12, 0.32)' }
+      : {
+          shadowColor: '#ea580c',
+          shadowOffset: { width: 0, height: 6 },
+          shadowOpacity: 0.3,
+          shadowRadius: 12,
+          elevation: 6,
+        }),
+  },
+  modeTileBody: {
+    flex: 1,
+  },
+  modeTileHeroTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  modeTileHeroDesc: {
+    color: 'rgba(255, 255, 255, 0.85)',
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  modeTileChevron: {
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 28,
+    fontWeight: '700',
+  },
+  modeTileRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  modeTile: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: 'rgba(194, 65, 12, 0.18)',
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+  },
+  modeTileEmoji: {
+    fontSize: 30,
+  },
+  modeTileTitle: {
+    marginTop: 6,
+    color: '#1c1917',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  modeTileDesc: {
+    marginTop: 2,
+    color: '#8a7563',
+    fontSize: 11.5,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   infoTitle: {
     color: '#b45309',
@@ -4485,12 +4760,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(80, 55, 30, 0.18)',
   },
-  lightCell: {
-    backgroundColor: '#faf3e3',
-  },
-  darkCell: {
-    backgroundColor: '#8f6535',
-  },
   setupZoneLight: {
     backgroundColor: 'rgba(22, 163, 74, 0.18)',
     borderColor: 'rgba(22, 163, 74, 0.55)',
@@ -4523,30 +4792,6 @@ const styles = StyleSheet.create({
   possibleMoveCell: {
     borderColor: '#16a34a',
     backgroundColor: 'rgba(22, 163, 74, 0.1)',
-  },
-  pieceContainer: {
-    width: '90%',
-    height: '90%',
-    borderRadius: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1.5,
-  },
-  playerPiece: {
-    backgroundColor: '#3b82f6',
-    borderColor: '#1d4ed8',
-  },
-  enemyPiece: {
-    backgroundColor: '#ef4444',
-    borderColor: '#b91c1c',
-  },
-  immobilizedPiece: {
-    opacity: 0.5,
-  },
-  pieceText: {
-    fontSize: 18,
-    color: '#ffffff',
-    fontWeight: 'bold',
   },
   validMoveDot: {
     width: 10,
@@ -4793,10 +5038,6 @@ const styles = StyleSheet.create({
     color: '#2c1e10',
     fontSize: 11,
     fontWeight: 'bold',
-  },
-  revealedPiece: {
-    borderColor: '#fbbf24',
-    borderWidth: 3,
   },
   modalActionsRow: {
     flexDirection: 'row',
@@ -5328,49 +5569,6 @@ const styles = StyleSheet.create({
   botCardHard: {
     backgroundColor: '#fef2f2',
     borderColor: '#fecaca',
-  },
-
-  // Settings & Skin styles
-  settingsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(100, 75, 50, 0.12)',
-  },
-  settingsLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#2c1e10',
-  },
-  skinToggleGroup: {
-    flexDirection: 'row',
-    backgroundColor: '#e7e5e4',
-    borderRadius: 8,
-    padding: 3,
-  },
-  skinToggleBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-  },
-  skinToggleBtnActive: {
-    backgroundColor: '#fff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  skinToggleBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#57534e',
-  },
-  skinToggleBtnTextActive: {
-    color: '#c2410c',
   },
 
   // Board cartoon/animated skin cells

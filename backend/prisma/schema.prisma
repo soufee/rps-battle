@@ -18,6 +18,7 @@ enum Platform {
   ios
   vk
   facebook
+  yandex
 }
 
 enum FriendStatus {

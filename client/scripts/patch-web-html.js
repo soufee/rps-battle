@@ -1,9 +1,18 @@
 #!/usr/bin/env node
 /**
- * Patches dist/index.html after expo export for mobile-friendly viewport/CSS.
+ * Patches dist/index.html after `expo export` for mobile-friendly viewport/CSS
+ * and per-platform SDK scripts.
+ *
+ * Usage:
+ *   node scripts/patch-web-html.js            # web + VK Mini Apps (hosted on rps-battles.com)
+ *   PLATFORM=yandex node scripts/patch-web-html.js   # archive for Yandex Games hosting
+ *   PLATFORM=fb node scripts/patch-web-html.js       # archive for Facebook Instant Games hosting
  */
 const fs = require('fs');
 const path = require('path');
+
+const PLATFORM = process.env.PLATFORM || 'web';
+const API_URL = process.env.API_URL || 'https://rps-battles.com';
 
 const distDir = path.join(__dirname, '../dist');
 const indexPath = path.join(distDir, 'index.html');
@@ -21,6 +30,44 @@ if (!bundle) {
   process.exit(1);
 }
 
+// Сборки для чужого хостинга (Яндекс, FB) должны грузить бандл по относительному пути
+const externalHosting = PLATFORM === 'yandex' || PLATFORM === 'fb';
+const bundleSrc = externalHosting
+  ? `./_expo/static/js/web/${bundle}`
+  : `/_expo/static/js/web/${bundle}`;
+
+let sdkScripts = '';
+let platformGlobals = '';
+
+if (PLATFORM === 'web') {
+  // VK Mini Apps открывает наш URL в iframe — vk-bridge нужен в обычной web-сборке
+  sdkScripts = `
+    <!-- VK Mini Apps SDK -->
+    <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>`;
+}
+
+if (PLATFORM === 'yandex') {
+  sdkScripts = `
+    <!-- Yandex Games SDK -->
+    <script src="/sdk.js"></script>`;
+  platformGlobals = `
+    <script>
+      window.__RPS_PLATFORM__ = 'yandex';
+      window.__RPS_API_URL__ = '${API_URL}';
+    </script>`;
+}
+
+if (PLATFORM === 'fb') {
+  sdkScripts = `
+    <!-- Facebook Instant Games SDK -->
+    <script src="https://connect.facebook.net/en_US/fbinstant.7.1.js"></script>`;
+  platformGlobals = `
+    <script>
+      window.__RPS_PLATFORM__ = 'fb';
+      window.__RPS_API_URL__ = '${API_URL}';
+    </script>`;
+}
+
 const html = `<!DOCTYPE html>
 <html lang="ru">
   <head>
@@ -31,7 +78,7 @@ const html = `<!DOCTYPE html>
       content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover"
     />
     <meta name="theme-color" content="#e8e2d8" />
-    <title>RPS Battle v2</title>
+    <title>RPS Battle — тактика «камень-ножницы-бумага»</title>${platformGlobals}${sdkScripts}
     <style id="expo-reset">
       html,
       body {
@@ -60,15 +107,30 @@ const html = `<!DOCTYPE html>
         }
       }
     </style>
-    <link rel="icon" href="/favicon.ico" />
+    <link rel="icon" href="${externalHosting ? './favicon.ico' : '/favicon.ico'}" />
   </head>
   <body>
     <noscript>Для игры нужен JavaScript.</noscript>
     <div id="root"></div>
-    <script src="/_expo/static/js/web/${bundle}" defer></script>
+    <script src="${bundleSrc}" defer></script>
   </body>
 </html>
 `;
 
 fs.writeFileSync(indexPath, html);
-console.log('Patched', indexPath, '→', bundle);
+
+// Facebook Instant Games требует fbapp-config.json в корне загружаемого архива
+if (PLATFORM === 'fb') {
+  const fbConfig = {
+    instant_games: {
+      platform_version: 'RICH_GAMEPLAY',
+      orientation: 'PORTRAIT',
+      override_web_orientation: 'PORTRAIT',
+      navigation_menu_version: 'NAV_FLOATING'
+    }
+  };
+  fs.writeFileSync(path.join(distDir, 'fbapp-config.json'), JSON.stringify(fbConfig, null, 2));
+  console.log('Wrote dist/fbapp-config.json');
+}
+
+console.log(`Patched ${indexPath} → ${bundle} (platform: ${PLATFORM})`);

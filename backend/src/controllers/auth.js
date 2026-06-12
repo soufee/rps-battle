@@ -9,6 +9,7 @@ const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const BASE_URL = process.env.BASE_URL || 'https://rps-battles.com';
 const VK_APP_SECRET = process.env.VK_APP_SECRET;
 const FB_APP_SECRET = process.env.FB_APP_SECRET;
+const YANDEX_APP_SECRET = process.env.YANDEX_APP_SECRET;
 
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -274,6 +275,11 @@ export async function status(req, res) {
 }
 
 export async function devLogin(req, res) {
+  // Разрешён ТОЛЬКО при явном NODE_ENV=development: если переменная не задана
+  // (например, на боевом сервере), вход закрыт по умолчанию.
+  if (process.env.NODE_ENV !== 'development') {
+    return res.status(403).send('Forbidden: Dev login is only allowed in development mode');
+  }
   try {
     let user = await prisma.user.findFirst({
       where: { nickname: 'DevTester' }
@@ -304,7 +310,9 @@ export async function devLogin(req, res) {
       ...v2CookieOptions(),
       maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
     });
-    res.redirect(`/?token=${accessToken}&refreshToken=${refreshToken}`);
+    // CLIENT_URL: dev-only redirect target when client runs on a separate dev server (e.g. Expo on :8081)
+    const clientUrl = process.env.CLIENT_URL || '';
+    res.redirect(`${clientUrl}/?token=${accessToken}&refreshToken=${refreshToken}`);
   } catch (error) {
     res.status(500).send(`Dev Auth Error: ${error.message}`);
   }
@@ -479,6 +487,134 @@ function verifyFacebookSignedRequest(signedRequest, secret) {
   }
 
   return null;
+}
+
+/**
+ * Гостевой вход: анонимный аккаунт, привязанный к deviceId, который клиент
+ * генерирует один раз и хранит локально. Основной способ входа на iOS/Android.
+ */
+export async function authGuest(req, res) {
+  const { deviceId, platform } = req.body;
+  if (!deviceId || typeof deviceId !== 'string' || deviceId.length < 8 || deviceId.length > 128) {
+    return res.status(400).json({ error: 'deviceId is required (8-128 chars)' });
+  }
+  const allowedPlatforms = ['web', 'android', 'ios'];
+  const plat = allowedPlatforms.includes(platform) ? platform : 'web';
+
+  try {
+    const externalId = `guest:${deviceId}`;
+    let user = await prisma.user.findFirst({
+      where: { externalId, platform: plat }
+    });
+
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          nickname: 'Гость_' + crypto.randomBytes(3).toString('hex'),
+          platform: plat,
+          externalId,
+          stats: { create: {} }
+        }
+      });
+    }
+
+    if (user.isBanned && user.bannedUntil && new Date() < user.bannedUntil) {
+      return res.status(403).json({ error: `User is banned: ${user.bannedReason}` });
+    }
+
+    const tokens = generateTokens(user);
+    res.json({ user, ...tokens });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+}
+
+/**
+ * Яндекс Игры: клиент передаёт данные игрока из ysdk.getPlayer({ signed: true }).
+ * Если задан YANDEX_APP_SECRET, проверяем подпись формата "<hmac>.<base64(json)>".
+ */
+export async function authYandexGames(req, res) {
+  const { signature, id, name, avatar } = req.body;
+  if (!id) return res.status(400).json({ error: 'id is required' });
+
+  let externalId = String(id);
+  let verifiedName = name || null;
+  let verifiedAvatar = avatar || null;
+
+  if (YANDEX_APP_SECRET) {
+    const data = verifyYandexSignature(signature, YANDEX_APP_SECRET);
+    if (!data) {
+      return res.status(401).json({ error: 'Invalid Yandex Games signature' });
+    }
+    // Доверяем только подписанным данным
+    if (data.playerId || data.uniqueID || data.id) {
+      externalId = String(data.playerId || data.uniqueID || data.id);
+    }
+    if (data.name) verifiedName = data.name;
+    if (data.avatar || data.photo) verifiedAvatar = data.avatar || data.photo;
+  } else if (signature) {
+    console.warn('YANDEX_APP_SECRET is not configured — accepting Yandex player without signature check.');
+  }
+
+  try {
+    let user = await prisma.user.findFirst({
+      where: { externalId, platform: 'yandex' }
+    });
+
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          nickname: (verifiedName || 'Yandex_Player') + '_' + crypto.randomBytes(3).toString('hex'),
+          avatarUrl: verifiedAvatar,
+          platform: 'yandex',
+          externalId,
+          stats: { create: {} }
+        }
+      });
+    }
+
+    if (user.isBanned && user.bannedUntil && new Date() < user.bannedUntil) {
+      return res.status(403).json({ error: `User is banned: ${user.bannedReason}` });
+    }
+
+    const tokens = generateTokens(user);
+    res.json({ user, ...tokens });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+}
+
+function verifyYandexSignature(signature, secret) {
+  if (!signature || typeof signature !== 'string') return null;
+  const dot = signature.indexOf('.');
+  if (dot <= 0) return null;
+
+  const sig = signature.slice(0, dot);
+  const payload = signature.slice(dot + 1);
+
+  const expected = crypto
+    .createHmac('sha256', secret)
+    .update(payload)
+    .digest('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+
+  const normalizedSig = sig.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+  try {
+    if (!crypto.timingSafeEqual(Buffer.from(normalizedSig, 'utf8'), Buffer.from(expected, 'utf8'))) {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+
+  try {
+    return JSON.parse(Buffer.from(payload.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));
+  } catch {
+    return null;
+  }
 }
 
 export async function mintToken(req, res) {
