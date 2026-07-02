@@ -37,3 +37,5 @@ deploy.sh
 
 # Build archives for platform uploads
 *.zip
+dist-backup*
+._*
