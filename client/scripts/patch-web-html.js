@@ -13,8 +13,9 @@ const path = require('path');
 
 const PLATFORM = process.env.PLATFORM || 'web';
 const API_URL = process.env.API_URL || 'https://rps-battles.com';
+const DIST_DIR = process.env.DIST_DIR || 'dist';
 
-const distDir = path.join(__dirname, '../dist');
+const distDir = path.join(__dirname, '..', DIST_DIR);
 const indexPath = path.join(distDir, 'index.html');
 const bundleDir = path.join(distDir, '_expo/static/js/web');
 
@@ -63,7 +64,7 @@ if (PLATFORM === 'yandex') {
 if (PLATFORM === 'fb') {
   sdkScripts = `
     <!-- Facebook Instant Games SDK -->
-    <script src="https://connect.facebook.net/en_US/fbinstant.7.1.js"></script>`;
+    <script src="https://connect.facebook.net/en_US/fbinstant.8.0.js"></script>`;
   platformGlobals = `
     <script>
       window.__RPS_PLATFORM__ = 'fb';

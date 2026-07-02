@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import {
   StyleSheet,
@@ -47,6 +47,16 @@ import {
 import { SKINS, SKIN_ORDER, getSkin, CellDecoration } from './skins';
 import { t, SUPPORTED_LOCALES, LOCALE_DATE_TAGS, TRANSLATIONS } from './shared/translations.js';
 import audioManager from './shared/audio-manager.js';
+import VictoryConfetti from './components/VictoryConfetti.js';
+import {
+  detectFacebookInstant,
+  waitForFBInstant,
+  bootFacebookInstantAuth,
+} from './shared/facebook-instant-auth.js';
+import {
+  hasVkLaunchParams,
+  isVkPlatformSession,
+} from './shared/platform-auth.js';
 
 
 const getBaseUrl = () => {
@@ -80,13 +90,14 @@ const IS_VK_ENTRY = Platform.OS === 'web'
   && !!window.location
   && /^\/vk(\/|$)/.test(window.location.pathname);
 
-// Запуск внутри Facebook Instant Games (сборка PLATFORM=fb на хостинге FB).
-// Аккаунт задаётся Facebook SDK — выход из аккаунта скрыт, как в VK Mini Apps.
-const IS_FB_ENTRY = Platform.OS === 'web'
-  && typeof window !== 'undefined'
-  && window.__RPS_PLATFORM__ === 'fb';
-
-const IS_MANAGED_ENTRY = IS_VK_ENTRY || IS_FB_ENTRY;
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      setTimeout(() => reject(new Error(`${label} timeout`)), ms);
+    })
+  ]);
+}
 
 const PIECE_TYPE_NAMES = { rock: 'Камень', paper: 'Бумага', scissors: 'Ножницы' };
 
@@ -862,6 +873,25 @@ export default function App() {
 
   // Screen state: 'lobby', 'arena', 'arena_private', 'arena_open', 'bot_select', 'game', 'profile', 'matchmaking'
   const [screen, setScreen] = useState('lobby');
+  const [confettiBurst, setConfettiBurst] = useState(null);
+  const [isFacebookInstant, setIsFacebookInstant] = useState(false);
+  // Пока идёт FBInstant bootstrap — не показываем экран выбора провайдеров
+  const [fbAuthBooting, setFbAuthBooting] = useState(
+    () => Platform.OS === 'web'
+      && typeof window !== 'undefined'
+      && window.__RPS_PLATFORM__ === 'fb'
+  );
+
+  // Managed platform auth: авто-вход без выбора провайдера (VK iframe / FB Instant)
+  const vkPlatformSession = isVkPlatformSession();
+  const isManagedEntry = vkPlatformSession || isFacebookInstant;
+  // Скрытие кнопки «Выйти» на /vk (путь) и в FB Instant
+  const hidePlatformLogout = IS_VK_ENTRY || isFacebookInstant;
+
+  const celebrateVictory = useCallback(() => {
+    audioManager.playVictoryCelebration();
+    setConfettiBurst(Date.now());
+  }, []);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [selectedBotId, setSelectedBotId] = useState('rabbit');
   const [isTournamentActive, setIsTournamentActive] = useState(false);
@@ -985,21 +1015,12 @@ export default function App() {
   useEffect(() => {
     const initializeAuth = async () => {
       bumpProgress(0.15, tr('connecting'));
-      let isVK = false;
-      let isFB = false;
+
       const isYandex = typeof window !== 'undefined'
         && (window.__RPS_PLATFORM__ === 'yandex' || typeof window.YaGames !== 'undefined');
 
-      if (typeof window !== 'undefined' && window.location) {
-        const params = new URLSearchParams(window.location.search);
-        if (params.get('vk_user_id') && params.get('sign')) {
-          isVK = true;
-        }
-      }
-
-      if (IS_FB_ENTRY && typeof window !== 'undefined' && window.FBInstant) {
-        isFB = true;
-      }
+      // VK Mini Apps: только при подписанных launch params (реальный запуск из VK)
+      const isVK = hasVkLaunchParams();
 
       if (isYandex && typeof window.YaGames !== 'undefined') {
         try {
@@ -1051,86 +1072,92 @@ export default function App() {
       if (isVK) {
         try {
           const vkBridge = window.vkBridge;
-          if (vkBridge) {
-            bumpProgress(0.35, tr('authorizing'));
-            await vkBridge.send('VKWebAppInit');
-
-            const searchParams = new URLSearchParams(window.location.search);
-            const vkParams = {};
-            for (const [key, value] of searchParams.entries()) {
-              vkParams[key] = value;
-            }
-            // Имя/аватар — косметика: если игрок не дал доступ к профилю,
-            // всё равно логинимся по подписанным параметрам запуска
-            try {
-              const vkUser = await vkBridge.send('VKWebAppGetUserInfo');
-              vkParams.first_name = vkUser.first_name;
-              vkParams.last_name = vkUser.last_name;
-              vkParams.photo_200 = vkUser.photo_200;
-            } catch (profileErr) {
-              console.warn('VKWebAppGetUserInfo failed, continuing without profile info:', profileErr);
-            }
-
-            const res = await fetch(`${BASE_URL}/api/v2/auth/vk`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(vkParams)
-            });
-
-            if (res.ok) {
-              const data = await res.json();
-              await storage.setItem('token', data.accessToken);
-              await storage.setItem('refreshToken', data.refreshToken);
-              setToken(data.accessToken);
-              setUser(data.user);
-              finishLoading();
-              return;
-            }
+          if (!vkBridge) {
+            throw new Error('VK Bridge SDK is not available');
           }
-        } catch (err) {
-          console.error('VK Mini App login error:', err);
-        }
-      }
 
-      if (isFB) {
-        try {
           bumpProgress(0.35, tr('authorizing'));
-          const FBInstant = window.FBInstant;
-          await FBInstant.initializeAsync();
-          await FBInstant.setLoadingProgress(100);
-          await FBInstant.startGameAsync();
+          await withTimeout(vkBridge.send('VKWebAppInit'), 15000, 'VKWebAppInit');
 
-          const signedInfo = await FBInstant.player.getSignedPlayerInfoAsync();
-          const playerName = typeof FBInstant.player.getName === 'function'
-            ? FBInstant.player.getName()
-            : null;
-          const playerPhoto = typeof FBInstant.player.getPhoto === 'function'
-            ? FBInstant.player.getPhoto()
-            : null;
+          const searchParams = new URLSearchParams(window.location.search);
+          const vkParams = {};
+          for (const [key, value] of searchParams.entries()) {
+            vkParams[key] = value;
+          }
+          // Имя/аватар — косметика: если игрок не дал доступ к профилю,
+          // всё равно логинимся по подписанным параметрам запуска
+          try {
+            const vkUser = await withTimeout(
+              vkBridge.send('VKWebAppGetUserInfo'),
+              10000,
+              'VKWebAppGetUserInfo'
+            );
+            vkParams.first_name = vkUser.first_name;
+            vkParams.last_name = vkUser.last_name;
+            vkParams.photo_200 = vkUser.photo_200;
+          } catch (profileErr) {
+            console.warn('VKWebAppGetUserInfo failed, continuing without profile info:', profileErr);
+          }
 
-          const res = await fetch(`${BASE_URL}/api/v2/auth/facebook`, {
+          const res = await fetch(`${BASE_URL}/api/v2/auth/vk`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              signedRequest: signedInfo.getSignature(),
-              name: playerName,
-              photo: playerPhoto
-            })
+            body: JSON.stringify(vkParams)
           });
 
           if (res.ok) {
             const data = await res.json();
             await storage.setItem('token', data.accessToken);
             await storage.setItem('refreshToken', data.refreshToken);
+            await storage.removeItem('logout_flag');
             setToken(data.accessToken);
             setUser(data.user);
             finishLoading();
             return;
           }
+
+          const errBody = await res.json().catch(() => ({}));
+          throw new Error(errBody.error || `VK auth HTTP ${res.status}`);
         } catch (err) {
-          console.error('FB Instant Games login error:', err);
+          console.error('VK Mini App login error:', err);
+          if (isVkPlatformSession()) {
+            setError(err.message || tr('platformAuthFailed'));
+            finishLoading();
+            return;
+          }
         }
       }
+
+      // Facebook Instant Games: после VK, только FBInstant SDK
+      const fbInstantReady = !isVK && (
+        detectFacebookInstant() || await waitForFBInstant()
+      );
+      if (fbInstantReady) {
+        setIsFacebookInstant(true);
+        setFbAuthBooting(true);
+        try {
+          bumpProgress(0.25, tr('authorizing'));
+          const data = await bootFacebookInstantAuth({
+            baseUrl: BASE_URL,
+            onProgress: (p, caption) => bumpProgress(Math.max(0.25, p), caption || tr('authorizing')),
+          });
+          await storage.setItem('token', data.accessToken);
+          await storage.setItem('refreshToken', data.refreshToken);
+          await storage.removeItem('logout_flag');
+          setToken(data.accessToken);
+          setUser(data.user);
+          setFbAuthBooting(false);
+          finishLoading();
+          return;
+        } catch (err) {
+          console.error('FB Instant Games login error:', err);
+          setError(err.message || tr('platformAuthFailed'));
+          setFbAuthBooting(false);
+          finishLoading();
+          return;
+        }
+      }
+      setFbAuthBooting(false);
 
       let justGotTokenFromUrl = false;
       if (typeof window !== 'undefined' && window.location) {
@@ -1141,6 +1168,7 @@ export default function App() {
         if (urlToken && urlRefreshToken) {
           await storage.setItem('token', urlToken);
           await storage.setItem('refreshToken', urlRefreshToken);
+          await storage.removeItem('logout_flag');
           // Clean URL params without page reload
           window.history.replaceState({}, document.title, window.location.pathname);
           justGotTokenFromUrl = true;
@@ -1419,7 +1447,7 @@ export default function App() {
               && merged.phase === GAME_CONFIG.PHASES.FINISHED
               && merged.endReason !== 'setup_timeout'
             ) {
-              if (merged.winner === currentRole) audioManager.playSFX('victory');
+              if (merged.winner === currentRole) celebrateVictory();
               else if (merged.winner && merged.winner !== 'draw') audioManager.playSFX('defeat');
             }
             if (merged.phase === GAME_CONFIG.PHASES.FINISHED && merged.endReason !== 'setup_timeout') {
@@ -2332,7 +2360,7 @@ export default function App() {
     const skipRating = reason === 'setup_timeout';
 
     if (gameMode !== 'pvp' && reason !== 'setup_timeout') {
-      if (playerWon) audioManager.playSFX('victory');
+      if (playerWon) celebrateVictory();
       else if (!isDraw) audioManager.playSFX('defeat');
     }
 
@@ -2528,7 +2556,7 @@ export default function App() {
     </>
   );
 
-  if (loading) {
+  if (loading || fbAuthBooting) {
     return <BrandSplash progress={loadProgress} caption={loadCaption} />;
   }
 
@@ -2538,6 +2566,29 @@ export default function App() {
     const isLocalhost = isWebPlatform
       && typeof window !== 'undefined'
       && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+    if (isManagedEntry) {
+      return (
+        <View style={[brandStyles.container, brandStyles.brandBg]}>
+          <StatusBar style="dark" />
+          <SafeAreaView style={brandStyles.flex1}>
+            <PageShell narrow padH={layout.padH}>
+              <View style={[brandStyles.authSurface, brandStyles.authCard, { marginTop: 48 }]}>
+                <Text style={brandStyles.authCardTitle}>{tr('platformAuthFailed')}</Text>
+                <Text style={brandStyles.subtitle}>{error || tr('platformAuthRetry')}</Text>
+                <TouchableOpacity
+                  style={brandStyles.loginBtn}
+                  onPress={() => { if (typeof window !== 'undefined') window.location.reload(); }}
+                >
+                  <Text style={brandStyles.loginBtnText}>{tr('retry')}</Text>
+                </TouchableOpacity>
+              </View>
+            </PageShell>
+          </SafeAreaView>
+        </View>
+      );
+    }
+
     return (
       <View style={[brandStyles.container, brandStyles.brandBg]}>
         <StatusBar style="dark" />
@@ -2566,13 +2617,13 @@ export default function App() {
                   </TouchableOpacity>
                 )}
 
-                {isWebPlatform && !IS_MANAGED_ENTRY && (
+                {isWebPlatform && (
                   <TouchableOpacity style={brandStyles.loginBtnVk} onPress={handleVKIDLogin}>
                     <Text style={brandStyles.loginBtnVkText}>{tr('loginVkId')}</Text>
                   </TouchableOpacity>
                 )}
 
-                {isWebPlatform && !IS_MANAGED_ENTRY && (
+                {isWebPlatform && !isFacebookInstant && (
                   <TouchableOpacity style={brandStyles.loginBtnFb} onPress={handleFacebookLogin}>
                     <Text style={brandStyles.loginBtnFbText}>{tr('loginFacebook')}</Text>
                   </TouchableOpacity>
@@ -3029,7 +3080,7 @@ export default function App() {
                   >
                     <Text style={styles.headerIconBtnText}>⚙️</Text>
                   </TouchableOpacity>
-                  {!IS_MANAGED_ENTRY && (
+                  {!hidePlatformLogout && (
                     <TouchableOpacity
                       style={styles.lobbyLogoutBtn}
                       onPress={handleLogout}
@@ -3363,7 +3414,7 @@ export default function App() {
               )}
             </SurfaceCard>
 
-            {!IS_MANAGED_ENTRY && (
+            {!hidePlatformLogout && (
               <TouchableOpacity style={styles.profileLogoutBtn} onPress={handleLogout}>
                 <Text style={styles.profileLogoutBtnText}>{tr('logoutAccount')}</Text>
               </TouchableOpacity>
@@ -4336,6 +4387,12 @@ export default function App() {
           </View>
         </Modal>
         {settingsModal}
+        {confettiBurst ? (
+          <VictoryConfetti
+            key={confettiBurst}
+            onDone={() => setConfettiBurst(null)}
+          />
+        ) : null}
       </SafeAreaView>
     );
   }

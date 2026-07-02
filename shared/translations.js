@@ -137,6 +137,9 @@ export const TRANSLATIONS = {
     connecting: "Connecting…",
     authorizing: "Signing in…",
     loadingProfile: "Loading profile…",
+    platformAuthFailed: "Platform sign-in failed",
+    platformAuthRetry: "Could not sign in with your platform account. Please try again.",
+    retry: "Try again",
 
     // Auth screen
     authTitle: "Capture the enemy flag",
@@ -444,6 +447,9 @@ export const TRANSLATIONS = {
     connecting: "Подключение…",
     authorizing: "Авторизация…",
     loadingProfile: "Загрузка профиля…",
+    platformAuthFailed: "Не удалось войти через платформу",
+    platformAuthRetry: "Не получилось авторизоваться через аккаунт платформы. Попробуйте ещё раз.",
+    retry: "Повторить",
 
     authTitle: "Захвати вражеский флаг",
     authDesc: "Скрытые фигуры, ловушки и дуэли «камень-ножницы-бумага». Сражайся с 20 ИИ-ботами или с живыми игроками онлайн.",
@@ -696,6 +702,9 @@ export const TRANSLATIONS = {
     connecting: "Connexion…",
     authorizing: "Authentification…",
     loadingProfile: "Chargement du profil…",
+    platformAuthFailed: "Échec de la connexion via la plateforme",
+    platformAuthRetry: "Impossible de se connecter avec votre compte plateforme. Réessayez.",
+    retry: "Réessayer",
 
     authTitle: "Capturez le drapeau ennemi",
     authDesc: "Pièces cachées, pièges et duels pierre-feuille-ciseaux. Affrontez 20 bots IA ou des joueurs en ligne.",
@@ -936,6 +945,9 @@ export const TRANSLATIONS = {
     connecting: "Verbinden…",
     authorizing: "Anmeldung…",
     loadingProfile: "Profil wird geladen…",
+    platformAuthFailed: "Anmeldung über die Plattform fehlgeschlagen",
+    platformAuthRetry: "Anmeldung mit Ihrem Plattformkonto nicht möglich. Bitte erneut versuchen.",
+    retry: "Erneut versuchen",
 
     authTitle: "Erobere die feindliche Flagge",
     authDesc: "Verdeckte Figuren, Fallen und Schere-Stein-Papier-Duelle. Kämpfe gegen 20 KI-Bots oder echte Spieler online.",
@@ -1176,6 +1188,9 @@ export const TRANSLATIONS = {
     connecting: "Conectando…",
     authorizing: "Iniciando sesión…",
     loadingProfile: "Cargando perfil…",
+    platformAuthFailed: "Error al iniciar sesión con la plataforma",
+    platformAuthRetry: "No se pudo iniciar sesión con tu cuenta de la plataforma. Inténtalo de nuevo.",
+    retry: "Reintentar",
 
     authTitle: "Captura la bandera enemiga",
     authDesc: "Piezas ocultas, trampas y duelos de piedra-papel-tijera. Lucha contra 20 bots de IA o jugadores reales en línea.",
@@ -1416,6 +1431,9 @@ export const TRANSLATIONS = {
     connecting: "Bağlanıyor…",
     authorizing: "Giriş yapılıyor…",
     loadingProfile: "Profil yükleniyor…",
+    platformAuthFailed: "Platform girişi başarısız",
+    platformAuthRetry: "Platform hesabınızla giriş yapılamadı. Lütfen tekrar deneyin.",
+    retry: "Tekrar dene",
 
     authTitle: "Düşman bayrağını ele geçir",
     authDesc: "Gizli taşlar, tuzaklar ve taş-kağıt-makas düelloları. 20 yapay zeka botuna veya çevrimiçi gerçek oyunculara karşı savaş.",
@@ -1656,6 +1674,9 @@ export const TRANSLATIONS = {
     connecting: "جارٍ الاتصال…",
     authorizing: "جارٍ تسجيل الدخول…",
     loadingProfile: "جارٍ تحميل الملف الشخصي…",
+    platformAuthFailed: "فشل تسجيل الدخول عبر المنصة",
+    platformAuthRetry: "تعذر تسجيل الدخول بحساب المنصة. حاول مرة أخرى.",
+    retry: "إعادة المحاولة",
 
     authTitle: "استولِ على علم العدو",
     authDesc: "قطع مخفية وفخاخ ومبارزات حجر-ورقة-مقص. قاتل 20 روبوتًا ذكيًا أو لاعبين حقيقيين عبر الإنترنت.",
@@ -1896,6 +1917,9 @@ export const TRANSLATIONS = {
     connecting: "连接中…",
     authorizing: "登录中…",
     loadingProfile: "正在加载资料…",
+    platformAuthFailed: "平台登录失败",
+    platformAuthRetry: "无法使用平台账号登录，请重试。",
+    retry: "重试",
 
     authTitle: "夺取敌方军旗",
     authDesc: "暗棋、陷阱与石头剪刀布对决。挑战20个AI机器人或在线真人玩家。",

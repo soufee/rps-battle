@@ -21,8 +21,8 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "build": "expo export -p web && node scripts/patch-web-html.js",
-    "build:yandex": "expo export -p web && PLATFORM=yandex node scripts/patch-web-html.js && cd dist && zip -r ../rps-battle-yandex.zip . && cd ..",
-    "build:fb": "expo export -p web && PLATFORM=fb node scripts/patch-web-html.js && cd dist && zip -r ../rps-battle-fb.zip . && cd .."
+    "build:yandex": "expo export -p web --output-dir dist-yandex && DIST_DIR=dist-yandex PLATFORM=yandex node scripts/patch-web-html.js && cd dist-yandex && zip -r ../rps-battle-yandex.zip . && cd ..",
+    "build:fb": "expo export -p web --output-dir dist-fb && DIST_DIR=dist-fb PLATFORM=fb node scripts/patch-web-html.js && cd dist-fb && zip -r ../rps-battle-fb.zip . && cd .."
   },
   "private": true
 }

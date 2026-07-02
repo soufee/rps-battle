@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import { playVictoryFanfare } from './victory-fanfare.js';
 
 // Map of asset requires. Metro resolves these at compile time.
 // Empty placeholder files must exist in assets/sounds/ to prevent build errors.
@@ -200,6 +201,15 @@ class AudioManager {
         this.bgmInstance = null;
       }
     }
+  }
+
+  /**
+   * Победа: ~2 с синтезированные фанфары (+ виброотдача).
+   */
+  async playVictoryCelebration() {
+    if (!this.settings.sfxEnabled) return;
+    this._vibrate('victory');
+    await playVictoryFanfare();
   }
 
   /**

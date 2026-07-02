@@ -669,16 +669,49 @@ function verifyVKSign(params, secret) {
 }
 
 export async function authFacebookInstant(req, res) {
-  const { signedRequest, name, photo } = req.body;
-  if (!signedRequest) return res.status(400).json({ error: 'signedRequest is required' });
+  const { signedRequest, signature, playerId, name, photo, provider, identityType } = req.body;
+  const signed = signedRequest || signature;
 
-  const fbData = verifyFacebookSignedRequest(signedRequest, FB_APP_SECRET);
-  if (!fbData) {
-    return res.status(401).json({ error: 'Invalid Facebook signedRequest signature' });
+  let externalId = playerId ? String(playerId).trim() : null;
+  if (externalId === '' || externalId === '0') externalId = null;
+
+  let fbData = null;
+
+  if (signed) {
+    fbData = verifyFacebookSignedRequest(signed, FB_APP_SECRET);
+    if (!fbData) {
+      console.error('[FB Instant auth] invalid signature', {
+        identityType: identityType || 'player',
+        hasPlayerId: !!externalId,
+      });
+      return res.status(401).json({ error: 'Invalid Facebook signedRequest signature' });
+    }
+    const signedPlayerId = String(
+      fbData.player_id || fbData.user_id || fbData.asid || ''
+    ).trim();
+    if (signedPlayerId && signedPlayerId !== '0') {
+      if (externalId && externalId !== signedPlayerId) {
+        return res.status(401).json({ error: 'playerId does not match signed payload' });
+      }
+      externalId = signedPlayerId;
+    }
+  }
+
+  if (!externalId) {
+    if (FB_APP_SECRET) {
+      return res.status(400).json({
+        error: provider === 'facebook_instant'
+          ? 'Valid signature is required when playerId is empty (Facebook Instant Games)'
+          : 'signature (signedRequest) is required for Facebook Instant auth',
+      });
+    }
+    if (!playerId) {
+      return res.status(400).json({ error: 'playerId or signature is required' });
+    }
+    externalId = String(playerId);
   }
 
   try {
-    const externalId = String(fbData.player_id || fbData.user_id);
     let user = await prisma.user.findFirst({
       where: { externalId, platform: 'facebook' },
       include: { stats: true }

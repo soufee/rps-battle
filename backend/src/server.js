@@ -84,6 +84,14 @@ app.post('/api/v2/stats/reset-tournament', authenticateToken, resetTournament);
 app.post('/api/v2/auth/google-native', nativeAuthGoogle);
 app.post('/api/v2/auth/vk', authVKMiniApp);
 app.post('/api/v2/auth/facebook', authFacebookInstant);
+// FB Instant клиент шлёт сюда снимок состояния FBInstant, когда identity недоступна;
+// смотреть: journalctl -u rps-v2-backend | grep 'FB Instant diagnostics'
+app.post('/api/v2/auth/facebook/diagnostics', (req, res) => {
+  try {
+    console.log('[FB Instant diagnostics]', JSON.stringify(req.body).slice(0, 8000));
+  } catch (_) {}
+  res.json({ ok: true });
+});
 app.post('/api/v2/auth/yandex', authYandexGames);
 app.post('/api/v2/auth/guest', authGuest);
 
