@@ -1,0 +1,52 @@
+name: Seed FB landscape issue
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/trigger-create-fb-landscape-issue'
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  create-issue:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create issue if missing
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const title = '[FB] Альбомная ориентация для Facebook Instant Games';
+
+            const { data: existing } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'all',
+              per_page: 100,
+            });
+
+            if (existing.some((i) => i.title === title)) {
+              core.info(`Issue already exists: ${title}`);
+              return;
+            }
+
+            const raw = fs.readFileSync(
+              '.github/ISSUE_TEMPLATE/fb-landscape-orientation.md',
+              'utf8'
+            );
+            const body = raw.replace(/^---[\s\S]*?---\s*/, '');
+
+            const { data: issue } = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+              labels: ['enhancement', 'facebook'],
+            });
+
+            core.info(`Created issue #${issue.number}: ${issue.html_url}`);
