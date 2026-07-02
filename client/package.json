@@ -5,7 +5,9 @@
   "dependencies": {
     "@expo/metro-runtime": "~56.0.13",
     "@react-native-async-storage/async-storage": "^3.1.1",
+    "@vkontakte/vk-bridge": "^3.0.2",
     "expo": "~56.0.8",
+    "expo-av": "~14.0.5",
     "expo-status-bar": "~56.0.4",
     "react": "19.2.3",
     "react-dom": "19.2.3",

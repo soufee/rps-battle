@@ -359,8 +359,16 @@ export async function authVKMiniApp(req, res) {
   if (!sign || !vk_user_id) return res.status(400).json({ error: 'sign and vk_user_id are required' });
 
   // Validate VK launching params sign
-  if (VK_APP_SECRET && !verifyVKSign(req.body, VK_APP_SECRET)) {
-    return res.status(401).json({ error: 'Invalid VK Mini App signature' });
+  if (VK_APP_SECRET) {
+    if (!verifyVKSign(req.body, VK_APP_SECRET)) {
+      return res.status(401).json({ error: 'Invalid VK Mini App signature' });
+    }
+    // Если задан VK_APP_ID — дополнительно сверяем, что запуск был из нашего приложения
+    if (process.env.VK_APP_ID && String(vk_app_id) !== String(process.env.VK_APP_ID)) {
+      return res.status(401).json({ error: 'VK app id mismatch' });
+    }
+  } else {
+    console.warn('VK_APP_SECRET is not configured — accepting VK login without signature check.');
   }
 
   try {
@@ -388,27 +396,36 @@ export async function authVKMiniApp(req, res) {
   }
 }
 
+/**
+ * Проверка подписи параметров запуска VK Mini Apps.
+ * Алгоритм (официальный пример VKCOM/vk-apps-launch-params):
+ * vk_-параметры сортируются по ключу, собираются в строку
+ * key=encodeURIComponent(value)&..., подписываются HMAC-SHA256 секретным
+ * ключом приложения, результат кодируется base64url (без хвостовых '=').
+ */
 function verifyVKSign(params, secret) {
   const sign = params.sign;
-  if (!sign) return false;
+  if (!sign || typeof sign !== 'string') return false;
 
-  // Extract all keys starting with "vk_"
-  const vkKeys = Object.keys(params)
-    .filter(key => key.startsWith('vk_'))
-    .sort();
-
-  // Recreate the query string
-  const queryStr = vkKeys
-    .map(key => `${key}=${params[key]}`)
+  const queryStr = Object.keys(params)
+    .filter(key => key.startsWith('vk_') && typeof params[key] === 'string')
+    .sort((a, b) => a.localeCompare(b))
+    .map(key => `${key}=${encodeURIComponent(params[key])}`)
     .join('&');
+  if (!queryStr) return false;
 
   const calculatedSign = crypto
     .createHmac('sha256', secret)
     .update(queryStr)
-    .digest('hex');
+    .digest('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+
+  const normalizedSign = sign.replace(/=+$/, '');
 
   try {
-    return crypto.timingSafeEqual(Buffer.from(calculatedSign, 'utf8'), Buffer.from(sign, 'utf8'));
+    return crypto.timingSafeEqual(Buffer.from(calculatedSign, 'utf8'), Buffer.from(normalizedSign, 'utf8'));
   } catch {
     return false;
   }

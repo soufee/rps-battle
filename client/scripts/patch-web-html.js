@@ -40,10 +40,13 @@ let sdkScripts = '';
 let platformGlobals = '';
 
 if (PLATFORM === 'web') {
-  // VK Mini Apps открывает наш URL в iframe — vk-bridge нужен в обычной web-сборке
+  // VK Mini Apps открывает наш URL в iframe — vk-bridge нужен в обычной web-сборке.
+  // Хостим копию из node_modules сами, чтобы вход через VK не зависел от unpkg.
+  const bridgeSrc = path.join(__dirname, '../node_modules/@vkontakte/vk-bridge/dist/browser.min.js');
+  fs.copyFileSync(bridgeSrc, path.join(distDir, 'vk-bridge.min.js'));
   sdkScripts = `
-    <!-- VK Mini Apps SDK -->
-    <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>`;
+    <!-- VK Mini Apps SDK (self-hosted) -->
+    <script src="/vk-bridge.min.js"></script>`;
 }
 
 if (PLATFORM === 'yandex') {

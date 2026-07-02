@@ -44,9 +44,6 @@ import {
   BOARD_HEIGHT,
   formatBoardCoord
 } from './shared/game-config.js';
-import { SKINS, SKIN_ORDER, getSkin, CellDecoration } from './skins';
-import { t, SUPPORTED_LOCALES, LOCALE_DATE_TAGS, TRANSLATIONS } from './shared/translations.js';
-import audioManager from './shared/audio-manager.js';
 
 
 const getBaseUrl = () => {
@@ -74,17 +71,6 @@ const getBaseUrl = () => {
 const BASE_URL = getBaseUrl();
 
 const PIECE_TYPE_NAMES = { rock: 'Камень', paper: 'Бумага', scissors: 'Ножницы' };
-
-const LANG_NAMES = {
-  en: 'English',
-  ru: 'Русский',
-  fr: 'Français',
-  de: 'Deutsch',
-  es: 'Español',
-  tr: 'Türkçe',
-  ar: 'العربية',
-  zh: '中文'
-};
 
 function resolveAssetUrl(path) {
   if (!path) return null;
@@ -116,7 +102,7 @@ function aggregateBotStats(rows) {
   );
 }
 
-function buildQuickOpponents(user, arenaPlayers, botList, playerFallback = 'Player') {
+function buildQuickOpponents(user, arenaPlayers, botList) {
   const out = [];
   const seen = new Set();
   const onlineMap = new Map((arenaPlayers || []).map((p) => [String(p.id), p]));
@@ -137,7 +123,7 @@ function buildQuickOpponents(user, arenaPlayers, botList, playerFallback = 'Play
     push({
       kind: 'human',
       id: oppId,
-      name: row.opponent?.nickname || online.name || playerFallback,
+      name: row.opponent?.nickname || online.name || 'Игрок',
       avatar: row.opponent?.avatarUrl || online.avatar,
       ratingMmr: online.ratingMmr ?? 1000,
       games: row.gamesPlayed || 0,
@@ -154,7 +140,7 @@ function buildQuickOpponents(user, arenaPlayers, botList, playerFallback = 'Play
     push({
       kind: 'human',
       id: p.id,
-      name: p.name || playerFallback,
+      name: p.name || 'Игрок',
       avatar: p.avatar,
       ratingMmr: p.ratingMmr ?? 1000,
       games: pvpStats.gamesPlayed || 0,
@@ -233,14 +219,6 @@ const storage = {
   }
 };
 
-// ─── Активная тема (скин) ────────────────────────────────────────────────────
-// App выставляет это значение в начале каждого рендера; вспомогательные
-// компоненты модуля читают её через useTheme().
-let activeTheme = null;
-function useTheme() {
-  return activeTheme;
-}
-
 const LAYOUT = {
   maxWidth: 1040,
   narrowWidth: 440,
@@ -261,7 +239,7 @@ function getLayoutMetrics(windowWidth) {
   const gap = compact ? 8 : mobile ? 12 : 16;
   const shellMax = wide ? LAYOUT.maxWidth : windowWidth;
   const gameShellMax = gameWide ? LAYOUT.gameWidth : windowWidth;
-  const boardMaxWidth = Math.max(260, Math.min(680, windowWidth - padH * 2 - cardPad * 2 - 20));
+  const boardMaxWidth = Math.max(260, Math.min(420, windowWidth - padH * 2 - cardPad * 2 - 20));
   const pieceFontSize = compact ? 11 : mobile ? 14 : 18;
   const validMoveDotSize = compact ? 6 : mobile ? 8 : 10;
   return {
@@ -282,7 +260,6 @@ function getLayoutMetrics(windowWidth) {
 }
 
 function PageShell({ children, narrow = false, style, padH, maxWidth }) {
-  const { styles } = useTheme();
   return (
     <View
       style={[
@@ -299,7 +276,6 @@ function PageShell({ children, narrow = false, style, padH, maxWidth }) {
 }
 
 function SurfaceCard({ children, style, accent }) {
-  const { styles } = useTheme();
   return (
     <View style={[styles.surfaceCard, accent && styles.surfaceCardAccent, style]}>
       {children}
@@ -310,242 +286,56 @@ function SurfaceCard({ children, style, accent }) {
 const TURN_TIME_LIMIT = 120;
 const SETUP_TIME_LIMIT = 60;
 
-const BRAND_LOGO = require('./assets/brand/logo-shield.jpg');
-const BRAND_ART = require('./assets/brand/battle-art.jpg');
-// Цвет фона запечён в logo-shield.jpg — экран должен совпадать с ним пиксель в пиксель
-const BRAND_BG = '#EAD3B6';
-
-// Сплэш и экран входа всегда брендовые (бежевые), не зависят от выбранного скина
-const brandStyles = StyleSheet.create({
-  container: { flex: 1 },
-  flex1: { flex: 1 },
-  scrollFlex: { flex: 1 },
-  brandBg: { backgroundColor: BRAND_BG },
-  splashWrap: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 32,
-    backgroundColor: BRAND_BG,
-  },
-  splashLogoImg: { width: 250, height: 275 },
-  splashBarTrack: {
-    marginTop: 30,
-    width: 240,
-    maxWidth: '80%',
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: 'rgba(124, 45, 18, 0.18)',
-    borderWidth: 1,
-    borderColor: 'rgba(124, 45, 18, 0.25)',
-    overflow: 'hidden',
-  },
-  splashBarFill: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: 0,
-    borderRadius: 5,
-    backgroundColor: '#f59e0b',
-  },
-  splashCaption: {
-    marginTop: 14,
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#8a6a4a',
-  },
-  authScroll: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    paddingVertical: 24,
-  },
-  authHero: { alignItems: 'center', marginBottom: 14 },
-  authLogo: { width: 180, height: 198 },
-  authArtFrame: {
-    borderRadius: 24,
-    overflow: 'hidden',
-    marginBottom: 16,
-    borderWidth: 3,
-    borderColor: 'rgba(124, 45, 18, 0.25)',
-    ...(Platform.OS === 'web'
-      ? { boxShadow: '0 14px 40px rgba(124, 45, 18, 0.25)' }
-      : {
-          shadowColor: '#7c2d12',
-          shadowOffset: { width: 0, height: 10 },
-          shadowOpacity: 0.25,
-          shadowRadius: 20,
-          elevation: 8,
-        }),
-  },
-  authArtImg: { width: '100%', height: 190 },
-  authSurface: {
-    backgroundColor: '#faf8f4',
-    borderRadius: 24,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(100, 75, 50, 0.1)',
-    ...(Platform.OS === 'web'
-      ? { boxShadow: '0 4px 24px rgba(44, 30, 16, 0.06)' }
-      : {
-          shadowColor: '#2c1e10',
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.06,
-          shadowRadius: 12,
-          elevation: 3,
-        }),
-  },
-  authCard: { alignItems: 'center', paddingVertical: 32, paddingHorizontal: 28 },
-  authCardCompact: { paddingVertical: 26, paddingHorizontal: 18 },
-  authCardTitle: {
-    fontSize: 19,
-    fontWeight: '800',
-    color: '#1c1917',
-    marginBottom: 10,
-    textAlign: 'center',
-  },
-  subtitle: {
-    color: '#6b5744',
-    fontSize: 14,
-    textAlign: 'center',
-    marginBottom: 28,
-    lineHeight: 22,
-  },
-  loginBtn: {
-    alignSelf: 'stretch',
-    backgroundColor: '#ea580c',
-    paddingVertical: 16,
-    borderRadius: 16,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  loginBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
-  loginBtnGuest: {
-    alignSelf: 'stretch',
-    backgroundColor: 'transparent',
-    borderWidth: 2,
-    borderColor: '#ea580c',
-    paddingVertical: 14,
-    borderRadius: 16,
-    alignItems: 'center',
-    marginTop: 12,
-  },
-  loginBtnGuestPrimary: { backgroundColor: '#ea580c' },
-  loginBtnGuestText: { color: '#c2410c', fontSize: 16, fontWeight: '800' },
-  loginBtnGuestTextPrimary: { color: '#fff' },
-  loginBtnDev: {
-    alignSelf: 'stretch',
-    backgroundColor: '#ecfdf5',
-    borderWidth: 1.5,
-    borderColor: '#10b981',
-    paddingVertical: 13,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginTop: 12,
-  },
-  loginBtnDevText: { color: '#047857', fontSize: 15, fontWeight: '700' },
-  errorText: { color: '#dc2626', marginTop: 20, fontSize: 14 },
-});
-
-/** Брендированный экран загрузки: логотип и прогресс реальной загрузки (0..1). */
-function BrandSplash({ caption = 'Загрузка…', progress = 0 }) {
-  const fill = useRef(new Animated.Value(0)).current;
+/** Брендированный экран загрузки: логотип, имя игры и бегущий прогресс-бар. */
+function BrandSplash({ caption = 'Загрузка…' }) {
+  const sweep = useRef(new Animated.Value(0)).current;
   const pulse = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    Animated.timing(fill, {
-      toValue: Math.min(1, Math.max(0, progress)),
-      duration: 220,
-      easing: Easing.out(Easing.ease),
-      useNativeDriver: false
-    }).start();
-  }, [progress, fill]);
-
-  useEffect(() => {
+    const sweepLoop = Animated.loop(
+      Animated.timing(sweep, {
+        toValue: 1,
+        duration: 1100,
+        easing: Easing.inOut(Easing.ease),
+        useNativeDriver: false
+      })
+    );
     const pulseLoop = Animated.loop(
       Animated.sequence([
-        Animated.timing(pulse, { toValue: 1.04, duration: 750, easing: Easing.inOut(Easing.ease), useNativeDriver: false }),
-        Animated.timing(pulse, { toValue: 1, duration: 750, easing: Easing.inOut(Easing.ease), useNativeDriver: false })
+        Animated.timing(pulse, { toValue: 1.08, duration: 700, easing: Easing.inOut(Easing.ease), useNativeDriver: false }),
+        Animated.timing(pulse, { toValue: 1, duration: 700, easing: Easing.inOut(Easing.ease), useNativeDriver: false })
       ])
     );
+    sweepLoop.start();
     pulseLoop.start();
-    return () => pulseLoop.stop();
-  }, [pulse]);
+    return () => {
+      sweepLoop.stop();
+      pulseLoop.stop();
+    };
+  }, [sweep, pulse]);
 
-  const fillWidth = fill.interpolate({
+  const barTranslate = sweep.interpolate({
     inputRange: [0, 1],
-    outputRange: ['5%', '100%']
+    outputRange: ['-40%', '110%']
   });
 
   return (
-    <View style={[brandStyles.container, brandStyles.splashWrap]}>
-      <Animated.Image
-        source={BRAND_LOGO}
-        style={[brandStyles.splashLogoImg, { transform: [{ scale: pulse }] }]}
-        resizeMode="contain"
-      />
-      <View style={brandStyles.splashBarTrack}>
-        <Animated.View style={[brandStyles.splashBarFill, { width: fillWidth }]} />
+    <View style={[styles.container, styles.appBg, styles.splashWrap]}>
+      <Animated.View style={[styles.splashLogoBadge, { transform: [{ scale: pulse }] }]}>
+        <Text style={styles.splashLogoEmoji}>🪨📄✂️</Text>
+      </Animated.View>
+      <Text style={styles.splashTitle}>RPS Battle</Text>
+      <Text style={styles.splashTagline}>Тактика · Камень · Бумага · Ножницы</Text>
+      <View style={styles.splashBarTrack}>
+        <Animated.View style={[styles.splashBarFill, { left: barTranslate }]} />
       </View>
-      <Text style={brandStyles.splashCaption}>{caption}</Text>
+      <Text style={styles.splashCaption}>{caption}</Text>
     </View>
   );
 }
 
 function countActivePieces(pieces) {
   return pieces.filter((p) => !p.removed && p.row >= 0).length;
-}
-
-const OCT_POINTS = '25,0 75,0 100,25 100,75 75,100 25,100 0,75 0,25';
-
-/**
- * Восьмиугольный командный чип под фигурой (неоновая рамка + заливка).
- * halo — дополнительный цветной ореол свечения (раскрытая фигура игрока).
- * dashed — пунктирная рамка (раскрытый/взорванный капкан).
- */
-function OctagonChip({ fill, border, glow, halo, dashed }) {
-  if (Platform.OS === 'web') {
-    const shadow = halo
-      ? `drop-shadow(0 0 8px ${halo})`
-      : `drop-shadow(0 0 5px ${glow})`;
-    return (
-      <View
-        pointerEvents="none"
-        style={{ position: 'absolute', top: '4%', left: '4%', right: '4%', bottom: '4%', zIndex: 0 }}
-      >
-        <svg
-          viewBox="0 0 100 100"
-          preserveAspectRatio="none"
-          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', filter: shadow, overflow: 'visible' }}
-        >
-          <polygon
-            points={OCT_POINTS}
-            fill={fill}
-            stroke={border}
-            strokeWidth={dashed ? 6 : 8}
-            strokeLinejoin="round"
-            strokeDasharray={dashed ? '12 7' : undefined}
-          />
-        </svg>
-      </View>
-    );
-  }
-  return (
-    <View
-      pointerEvents="none"
-      style={{
-        position: 'absolute',
-        top: '5%',
-        left: '5%',
-        right: '5%',
-        bottom: '5%',
-        borderRadius: 8,
-        backgroundColor: fill,
-        borderWidth: 2.5,
-        borderColor: border,
-        borderStyle: dashed ? 'dashed' : 'solid',
-        zIndex: 0,
-      }}
-    />
-  );
 }
 
 function OpponentPanel({
@@ -559,18 +349,14 @@ function OpponentPanel({
   isTurnActive,
   fillPercent,
   urgent,
-  compact = false,
-  compactAlways = false
+  compact = false
 }) {
-  const { styles, skin, tr } = useTheme();
   const isBlue = army === 'blue';
-  compact = compact || compactAlways;
   return (
     <View
       style={[
         styles.opponentPanel,
         isBlue ? styles.panelBlue : styles.panelRed,
-        isBlue ? skin.theme.scoreboard.blue : skin.theme.scoreboard.red,
         isTurnActive && styles.panelTurnActive,
         isTurnActive && urgent && (isBlue ? styles.panelUrgentBlue : styles.panelUrgentRed)
       ]}
@@ -612,7 +398,7 @@ function OpponentPanel({
               {subtitle}
             </Text>
           ) : null}
-          <Text style={[styles.panelMeta, compact && styles.panelMetaCompact]}>{tr('piecesCount', { n: pieceCount })}</Text>
+          <Text style={[styles.panelMeta, compact && styles.panelMetaCompact]}>Фигур: {pieceCount}</Text>
           <Text
             style={[
               styles.panelTurnLabel,
@@ -629,7 +415,6 @@ function OpponentPanel({
 }
 
 function DrawCountdownBar({ moves = 0, limit = 20, compact = false }) {
-  const { styles, tr } = useTheme();
   const safeMoves = Math.max(0, Math.min(limit, moves));
   const remaining = Math.max(0, limit - safeMoves);
   const percent = (safeMoves / limit) * 100;
@@ -640,10 +425,10 @@ function DrawCountdownBar({ moves = 0, limit = 20, compact = false }) {
     <View style={[styles.drawCountdown, compact && styles.drawCountdownCompact, urgent && styles.drawCountdownDanger]}>
       <View style={styles.drawCountdownHeader}>
         <Text style={[styles.drawCountdownTitle, compact && styles.drawCountdownTitleCompact]}>
-          {tr('drawCountdownTitle')}
+          До ничьи без взятий
         </Text>
         <Text style={[styles.drawCountdownMeta, urgent && styles.drawCountdownMetaDanger]}>
-          {tr('drawCountdownMeta', { moves: safeMoves, limit, remaining })}
+          {safeMoves} / {limit} · осталось {remaining}
         </Text>
       </View>
       <View style={styles.drawCountdownTrack}>
@@ -658,7 +443,7 @@ function DrawCountdownBar({ moves = 0, limit = 20, compact = false }) {
       </View>
       {safeMoves >= Math.floor(limit * 0.5) && (
         <Text style={[styles.drawCountdownHint, urgent && styles.drawCountdownHintDanger]}>
-          {urgent ? tr('drawUrgentHint') : tr('drawSoonHint')}
+          {urgent ? 'Срочно нужно взятие — иначе ничья!' : 'Скоро ничья — атакуйте или берите фигуры.'}
         </Text>
       )}
     </View>
@@ -670,109 +455,6 @@ export default function App() {
   const layout = getLayoutMetrics(windowWidth);
   const isWide = layout.wide;
   const isGameWide = layout.gameWide;
-
-  // ─── Скин, язык, аудио ───
-  const [skinId, setSkinId] = useState('cyberpunk');
-  const [locale, setLocaleState] = useState('ru');
-  const [audioSettings, setAudioSettings] = useState({
-    bgmEnabled: true,
-    sfxEnabled: true,
-    voiceEnabled: true
-  });
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [logOpen, setLogOpen] = useState(false);
-
-  const skin = getSkin(skinId);
-  const ui = skin.ui;
-  const styles = React.useMemo(() => createStyles(skin), [skin]);
-  const localeRef = useRef(locale);
-  localeRef.current = locale;
-  // Стабильная ссылка: можно безопасно использовать в socket-обработчиках
-  const tr = React.useCallback((key, params) => t(key, localeRef.current, params), []);
-  // Вспомогательные компоненты модуля читают тему синхронно в этом же рендере
-  activeTheme = { styles, skin, ui, tr, locale };
-
-  const changeSkin = (id) => {
-    setSkinId(id);
-    storage.setItem('skin', id);
-  };
-  const changeLocale = (l) => {
-    setLocaleState(l);
-    storage.setItem('locale', l);
-  };
-  const changeAudio = (patch) => {
-    setAudioSettings((prev) => {
-      const next = { ...prev, ...patch };
-      storage.setItem('audio_settings', JSON.stringify(next));
-      audioManager.setSettings(next);
-      return next;
-    });
-  };
-
-  // Имя/описание бота с учётом локали (fallback — то, что задано в реестре ботов)
-  const botName = (bot) => {
-    if (!bot) return '';
-    return TRANSLATIONS[locale]?.[`bot_${bot.id}_name`] || bot.name;
-  };
-  const botDesc = (bot) => {
-    if (!bot) return '';
-    return TRANSLATIONS[locale]?.[`bot_${bot.id}_desc`] || bot.shortDescription || bot.longDescription || '';
-  };
-
-  // Восстановление сохранённых настроек + автоопределение языка
-  useEffect(() => {
-    (async () => {
-      const savedSkin = await storage.getItem('skin');
-      if (savedSkin && SKINS[savedSkin]) setSkinId(savedSkin);
-
-      const savedAudio = await storage.getItem('audio_settings');
-      if (savedAudio) {
-        try {
-          const parsed = JSON.parse(savedAudio);
-          setAudioSettings((prev) => ({ ...prev, ...parsed }));
-          audioManager.initialize(parsed);
-        } catch (e) {}
-      }
-
-      const savedLocale = await storage.getItem('locale');
-      if (savedLocale && SUPPORTED_LOCALES.includes(savedLocale)) {
-        setLocaleState(savedLocale);
-        return;
-      }
-      // Язык платформы → язык устройства → английский
-      let detected = null;
-      if (typeof window !== 'undefined') {
-        try {
-          const ysdkLang = window.__YSDK__?.environment?.i18n?.lang;
-          const params = new URLSearchParams(window.location?.search || '');
-          const vkLang = params.get('vk_language') || params.get('language');
-          const cand = ysdkLang || vkLang;
-          if (cand && SUPPORTED_LOCALES.includes(String(cand).slice(0, 2))) {
-            detected = String(cand).slice(0, 2);
-          }
-        } catch (e) {}
-      }
-      if (!detected && typeof navigator !== 'undefined') {
-        const langs = navigator.languages || [navigator.language];
-        for (const l of langs) {
-          const code = String(l || '').slice(0, 2).toLowerCase();
-          if (SUPPORTED_LOCALES.includes(code)) {
-            detected = code;
-            break;
-          }
-        }
-      }
-      setLocaleState(detected || 'en');
-    })();
-  }, []);
-
-  // RTL для арабского (web)
-  useEffect(() => {
-    if (Platform.OS === 'web' && typeof document !== 'undefined') {
-      document.documentElement.setAttribute('dir', locale === 'ar' ? 'rtl' : 'ltr');
-      document.documentElement.setAttribute('lang', locale);
-    }
-  }, [locale]);
 
   // Mobile browsers: allow page scroll when content is taller than viewport
   useEffect(() => {
@@ -804,23 +486,9 @@ export default function App() {
     };
   }, []);
   const [loading, setLoading] = useState(true);
-  const [loadProgress, setLoadProgress] = useState(0.08);
-  const [loadCaption, setLoadCaption] = useState(t('loading', 'en'));
   const [token, setToken] = useState(null);
   const [user, setUser] = useState(null);
   const [error, setError] = useState(null);
-
-  // Прогресс сплэша: только вперёд, бар не откатывается назад
-  const bumpProgress = (value, caption) => {
-    setLoadProgress((prev) => Math.max(prev, value));
-    if (caption) setLoadCaption(caption);
-  };
-
-  // Добиваем бар до 100% и быстро убираем сплэш
-  const finishLoading = () => {
-    setLoadProgress(1);
-    setTimeout(() => setLoading(false), 240);
-  };
 
   // Screen state: 'lobby', 'arena', 'bot_select', 'game', 'profile', 'matchmaking'
   const [screen, setScreen] = useState('lobby');
@@ -862,21 +530,6 @@ export default function App() {
   const socketRef = useRef(null);
   const pvpRoleRef = useRef(null);
   const refreshPromiseRef = useRef(null);
-
-  // Фоновая музыка: лобби-эмбиент вне боя, боевой эмбиент в матче
-  const bgmTypeRef = useRef(null);
-  useEffect(() => {
-    if (loading || !user) {
-      bgmTypeRef.current = null;
-      audioManager.stopBGM();
-      return;
-    }
-    const type = screen === 'game' ? 'battle' : 'lobby';
-    if (bgmTypeRef.current !== type) {
-      bgmTypeRef.current = type;
-      audioManager.playBGM(type);
-    }
-  }, [screen, loading, user]);
 
   // Countdown turn timer effect (PvE only; PvP syncs from server turnDeadline)
   useEffect(() => {
@@ -938,7 +591,6 @@ export default function App() {
   // Check login callback tokens on mount
   useEffect(() => {
     const initializeAuth = async () => {
-      bumpProgress(0.15, tr('connecting'));
       let isVK = false;
       let isFB = false;
       const isYandex = typeof window !== 'undefined'
@@ -957,7 +609,6 @@ export default function App() {
 
       if (isYandex && typeof window.YaGames !== 'undefined') {
         try {
-          bumpProgress(0.35, tr('authorizing'));
           const ysdk = await window.YaGames.init();
           window.__YSDK__ = ysdk; // оставляем для рекламы/лидербордов
 
@@ -992,7 +643,7 @@ export default function App() {
             await storage.setItem('refreshToken', data.refreshToken);
             setToken(data.accessToken);
             setUser(data.user);
-            finishLoading();
+            setLoading(false);
             // Сообщаем Яндексу, что игра загружена и готова
             try { ysdk.features?.LoadingAPI?.ready?.(); } catch (e) {}
             return;
@@ -1006,7 +657,6 @@ export default function App() {
         try {
           const vkBridge = window.vkBridge;
           if (vkBridge) {
-            bumpProgress(0.35, tr('authorizing'));
             await vkBridge.send('VKWebAppInit');
             const vkUser = await vkBridge.send('VKWebAppGetUserInfo');
             
@@ -1031,7 +681,7 @@ export default function App() {
               await storage.setItem('refreshToken', data.refreshToken);
               setToken(data.accessToken);
               setUser(data.user);
-              finishLoading();
+              setLoading(false);
               return;
             }
           }
@@ -1042,7 +692,6 @@ export default function App() {
 
       if (isFB) {
         try {
-          bumpProgress(0.35, tr('authorizing'));
           const FBInstant = window.FBInstant;
           await FBInstant.initializeAsync();
           await FBInstant.setLoadingProgress(100);
@@ -1062,7 +711,7 @@ export default function App() {
             await storage.setItem('refreshToken', data.refreshToken);
             setToken(data.accessToken);
             setUser(data.user);
-            finishLoading();
+            setLoading(false);
             return;
           }
         } catch (err) {
@@ -1085,8 +734,6 @@ export default function App() {
         }
       }
 
-      bumpProgress(0.45, tr('loadingProfile'));
-
       if (Platform.OS === 'web') {
         const savedToken = await storage.getItem('token');
         if (!savedToken && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
@@ -1098,20 +745,18 @@ export default function App() {
         }
         if (savedToken) {
           setToken(savedToken);
-          bumpProgress(0.65);
           fetchUserProfile(savedToken);
         } else {
-          finishLoading();
+          setLoading(false);
         }
       } else {
         // Mobile native: preserve login persistence in localStorage
         const savedToken = await storage.getItem('token');
         if (savedToken) {
           setToken(savedToken);
-          bumpProgress(0.65);
           fetchUserProfile(savedToken);
         } else {
-          finishLoading();
+          setLoading(false);
         }
       }
     };
@@ -1151,7 +796,6 @@ export default function App() {
           toRow: row,
           toCol: col
         });
-        audioManager.playSFX('move');
         deselectPiece();
       } else {
         const updatedGame = { ...game };
@@ -1167,39 +811,51 @@ export default function App() {
     }
   };
 
-  /** Рендер фигуры по активному скину: PNG-ассеты, рамка и подсветка из skin.piece. */
-  const renderSkinPiece = (type, pieceType, isEnemy, isImmobilized, isRevealed) => {
-    const side = isEnemy ? 'enemy' : 'player';
+  const renderCartoonPiece = (type, pieceType, isEnemy, isImmobilized, isRevealed) => {
     const pType = isEnemy ? (isRevealed ? (pieceType || type) : 'unknown') : (pieceType || type);
-    const containerStyle = skin.piece.container(side, {
-      immobilized: isImmobilized,
-      revealed: isRevealed
-    });
-    let asset = pType !== 'unknown' ? skin.assets?.[pType] : null;
-    // Взорванный/раскрытый капкан — картинка «взрыв» вместо бомбы
-    if (pType === 'trap' && isRevealed && skin.assets?.trapOpen) {
-      asset = skin.assets.trapOpen;
+    
+    // Team background color: Blue for player, Red for enemy
+    const bgColor = isEnemy ? '#ef4444' : '#3b82f6';
+    
+    // Literal, clearly identifiable symbols
+    let emoji = '❓';
+    if (pType === 'rock') {
+      emoji = '🪨'; // Stone
+    } else if (pType === 'paper') {
+      emoji = '📄'; // Paper sheet
+    } else if (pType === 'scissors') {
+      emoji = '✂️'; // Scissors
+    } else if (pType === 'trap') {
+      emoji = '💣'; // Bomb
+    } else if (pType === 'flag') {
+      emoji = '🚩'; // Flag
+    } else {
+      emoji = '❓';
     }
-    // Для скинов с командным чипом (киберпанк) — восьмиугольная подложка под фигурой
-    const chip = skin.piece.chip
-      ? skin.piece.chip(side, { type: pType, immobilized: isImmobilized, revealed: isRevealed })
-      : null;
+
+    const containerStyle = [
+      styles.cartoonPieceBadge,
+      isEnemy ? styles.cartoonEnemyBadge : styles.cartoonPlayerBadge,
+      isImmobilized && styles.cartoonImmobilizedBadge,
+      (!isEnemy && isRevealed) && styles.cartoonRevealedBadge,
+      { backgroundColor: bgColor }
+    ];
 
     return (
-      <View style={containerStyle} pointerEvents="none">
-        {chip ? <OctagonChip {...chip} /> : null}
-        {skin.piece.showGloss ? <View style={styles.cartoonPieceGloss} /> : null}
-        {asset ? (
-          <Image source={asset} style={skin.piece.imageStyle(side, pType === 'trap' && isRevealed)} resizeMode="contain" />
-        ) : (
-          <Text style={skin.piece.unknown(side, layout.pieceFontSize)}>
-            {pType === 'unknown' ? '?' : (skin.pieceEmoji?.[pType] || PIECE_SYMBOLS[pType] || '?')}
-          </Text>
-        )}
+      <View style={containerStyle}>
+        {/* Shiny Glossy Reflection Overlay */}
+        <View style={styles.cartoonPieceGloss} />
+
+        {/* Center Emoji */}
+        <Text style={[
+          styles.cartoonPieceEmojiText,
+          { fontSize: layout.pieceFontSize * 1.15 }
+        ]}>
+          {emoji}
+        </Text>
       </View>
     );
   };
-  const renderCartoonPiece = renderSkinPiece;
 
   // Socket.IO PvP Connection & Event Listeners
   useEffect(() => {
@@ -1233,8 +889,7 @@ export default function App() {
       socket.on('matchmaking:status', ({ status }) => {
         if (status === 'queued') {
           setIsSearchingMatch(true);
-          // Если игрок ищет соперника через «Быструю игру», не уводим его в арену
-          setScreen((prev) => (prev === 'matchmaking' ? prev : 'arena'));
+          setScreen('arena');
         } else if (status === 'idle') {
           setIsSearchingMatch(false);
         }
@@ -1255,7 +910,7 @@ export default function App() {
 
       socket.on('queue:joined', () => {
         setIsSearchingMatch(true);
-        setArenaStatus(tr('statusInQueue'));
+        setArenaStatus('В очереди... Ожидание противника');
       });
 
       socket.on('queue:left', () => {
@@ -1265,9 +920,8 @@ export default function App() {
 
       socket.on('queue:timeout', (d) => {
         setIsSearchingMatch(false);
-        setArenaStatus(d?.message || tr('opponentNotFound'));
-        setScreen((prev) => (prev === 'matchmaking' ? 'lobby' : prev));
-        alert(d?.message || tr('opponentNotFound5m'));
+        setArenaStatus(d?.message || 'Соперник не найден');
+        alert(d?.message || 'Соперник не найден за 5 минут');
       });
 
       socket.on('room:created', ({ roomId, code, isPrivate }) => {
@@ -1275,10 +929,10 @@ export default function App() {
         setMyWaitingRoomPrivate(!!isPrivate);
         if (isPrivate && code) {
           setCreatedRoomCode(code);
-          setArenaStatus(tr('statusShareCode', { code }));
+          setArenaStatus(`Ожидание соперника. Передайте код: ${code}`);
         } else {
           setCreatedRoomCode(null);
-          setArenaStatus(tr('statusOpenRoomCreated'));
+          setArenaStatus('Открытая комната создана. Ожидаем второго игрока...');
         }
       });
 
@@ -1290,17 +944,17 @@ export default function App() {
       });
 
       socket.on('room:error', (d) => {
-        const msg = d?.message || tr('roomError');
+        const msg = d?.message || 'Ошибка комнаты';
         setArenaStatus(msg);
         alert(msg);
       });
 
       socket.on('challenge:sent', () => {
-        setArenaStatus(tr('statusChallengeSent'));
+        setArenaStatus('Вызов отправлен. Ожидание ответа...');
       });
 
       socket.on('challenge:error', (d) => {
-        setArenaStatus(d?.message || tr('challengeError'));
+        setArenaStatus(d?.message || 'Ошибка вызова');
       });
 
       socket.on('invite:received', (data) => {
@@ -1318,7 +972,7 @@ export default function App() {
         setPvpOpponent(opponent);
         setGameMode('pvp');
         setScreen('game');
-        setBattleLogs([tr('matchFound')]);
+        setBattleLogs(['🎮 Матч найден! Начинается расстановка.']);
         setGame({
           id: roomId,
           phase: GAME_CONFIG.PHASES.SETUP,
@@ -1341,25 +995,6 @@ export default function App() {
           }
           setGame((prev) => {
             const merged = { ...targetState };
-            // Озвучка PvP-событий по переходам состояния
-            if (prev && merged.phase === GAME_CONFIG.PHASES.PLAYING) {
-              if (merged.battleState && !prev.battleState) {
-                audioManager.playSFX('tie');
-              } else if (
-                prev.currentPlayer !== merged.currentPlayer
-                && merged.currentPlayer === currentRole
-              ) {
-                audioManager.playSFX('turn');
-              }
-            }
-            if (
-              prev && prev.phase !== GAME_CONFIG.PHASES.FINISHED
-              && merged.phase === GAME_CONFIG.PHASES.FINISHED
-              && merged.endReason !== 'setup_timeout'
-            ) {
-              if (merged.winner === currentRole) audioManager.playSFX('victory');
-              else if (merged.winner && merged.winner !== 'draw') audioManager.playSFX('defeat');
-            }
             if (merged.phase === GAME_CONFIG.PHASES.FINISHED && merged.endReason !== 'setup_timeout') {
               if (merged.winner === currentRole) {
                 setRatingUpdate(25);
@@ -1400,7 +1035,7 @@ export default function App() {
       });
 
       socket.on('game:opponent_disconnected', () => {
-        setArenaStatus(tr('statusOpponentDisconnected'));
+        setArenaStatus('Соперник отключился. Ожидание переподключения (до 2 мин)...');
       });
 
       return () => {
@@ -1444,15 +1079,6 @@ export default function App() {
       socketRef.current.emit('online:join_queue');
       setIsSearchingMatch(true);
     }
-  };
-
-  /** Быстрая игра из лобби: сразу в очередь подбора + экран поиска. */
-  const handleQuickMatch = () => {
-    setProfileMenuOpen(false);
-    setArenaStatus('');
-    socketRef.current?.emit('lobby:enter');
-    handleJoinQueue();
-    setScreen('matchmaking');
   };
 
   const handleLeaveQueue = () => {
@@ -1505,11 +1131,11 @@ export default function App() {
       pvpOpponent?.userId
       ?? (pvpRole === 'p1' ? game?.p2?.userId : game?.p1?.userId);
     if (!opponentId) {
-      alert(tr('rematchNoOpponent'));
+      alert('Не удалось определить соперника для реванша');
       return;
     }
     socketRef.current?.emit('online:challenge', { targetId: opponentId });
-    setArenaStatus(tr('statusRematchSent'));
+    setArenaStatus('Вызов на реванш отправлен. Ожидание ответа...');
     setGame(null);
     setSelectedPiece(null);
     setValidMoves([]);
@@ -1569,7 +1195,7 @@ export default function App() {
     try {
       let currentToken = authToken || token || (await storage.getItem('token'));
       if (!currentToken) {
-        finishLoading();
+        setLoading(false);
         return;
       }
       let res = await fetch(`${BASE_URL}/api/v2/auth/status`, {
@@ -1597,7 +1223,7 @@ export default function App() {
           await handleLogout();
           return;
         }
-        throw new Error(tr('profileLoadFailed'));
+        throw new Error('Не удалось загрузить профиль');
       }
       const data = await res.json();
       if (data.authenticated) {
@@ -1606,7 +1232,7 @@ export default function App() {
     } catch (err) {
       setError(err.message);
     } finally {
-      finishLoading();
+      setLoading(false);
     }
   };
 
@@ -1705,7 +1331,7 @@ export default function App() {
       setUser(data.user);
     } catch (err) {
       console.error('Guest login error:', err);
-      setError(tr('guestLoginFailed'));
+      setError('Не удалось войти гостем. Проверьте соединение с интернетом.');
     }
   };
 
@@ -1766,7 +1392,7 @@ export default function App() {
   const formatProfileDate = (iso) => {
     if (!iso) return '—';
     try {
-      return new Date(iso).toLocaleDateString(LOCALE_DATE_TAGS[locale] || 'en-US', {
+      return new Date(iso).toLocaleDateString('ru-RU', {
         day: 'numeric',
         month: 'long',
         year: 'numeric'
@@ -1778,10 +1404,10 @@ export default function App() {
 
   const platformLabel = (platform) => {
     const map = {
-      web: tr('platformWeb'),
+      web: 'Веб',
       android: 'Android',
       ios: 'iOS',
-      vk: tr('platformVk'),
+      vk: 'ВКонтакте',
       facebook: 'Facebook'
     };
     return map[platform] || platform || '—';
@@ -1803,8 +1429,8 @@ export default function App() {
     setGame(freshGame);
     setScreen('game');
     setBattleLogs([
-      tr('logSetupIntro'),
-      tr('logSetupTime', { sec: SETUP_TIME_LIMIT })
+      '🎮 Настройка: разместите флаг и капкан в нижних 2 рядах.',
+      `⏱️ На расстановку — ${SETUP_TIME_LIMIT} секунд.`
     ]);
     setSelectedPiece(null);
     setValidMoves([]);
@@ -1820,7 +1446,7 @@ export default function App() {
     const updatedGame = { ...game };
     endGame(updatedGame, false, 'setup_timeout');
     setGame(updatedGame);
-    addLog(tr('logSetupTimeout'));
+    addLog('⏱️ Время на расстановку истекло. Партия не началась.');
     handleGameOver(COMPUTER, 'setup_timeout');
   };
 
@@ -1878,7 +1504,7 @@ export default function App() {
 
     // Визуально всегда свои нижние 2 ряда (и p1, и p2)
     if (row < 4) {
-      addLog(tr('logOwnTerritoryOnly'));
+      addLog('⚠️ Вы можете размещать фигуры только в своей территории (нижние 2 ряда)!');
       return;
     }
 
@@ -1891,10 +1517,10 @@ export default function App() {
       updatedGame.board = buildSetupPreviewBoard([row, col], null, owner);
       updatedGame.setupPhase = GAME_CONFIG.SETUP_PHASES.TRAP;
       setGame(updatedGame);
-      addLog(tr('logFlagPlaced', { coord: formatBoardCoord(row, col) }));
+      addLog(`Flag placed at ${formatBoardCoord(row, col)}. Choose Trap position.`);
     } else if (game.setupPhase === GAME_CONFIG.SETUP_PHASES.TRAP) {
       if (game.flagPosition[0] === row && game.flagPosition[1] === col) {
-        addLog(tr('logNoTrapOnFlag'));
+        addLog('⚠️ Нельзя ставить капкан на клетку с флагом!');
         return;
       }
       const updatedGame = { ...game };
@@ -1902,7 +1528,7 @@ export default function App() {
       updatedGame.board = buildSetupPreviewBoard(updatedGame.flagPosition, [row, col], owner);
       updatedGame.setupPhase = GAME_CONFIG.SETUP_PHASES.DONE;
       setGame(updatedGame);
-      addLog(tr('logTrapPlaced', { coord: formatBoardCoord(row, col) }));
+      addLog(`Trap placed at ${formatBoardCoord(row, col)}. Ready to start.`);
     }
   };
 
@@ -1917,7 +1543,7 @@ export default function App() {
     setGame(updatedGame);
     setSetupTimeLeft(SETUP_TIME_LIMIT);
     setupTimeoutHandledRef.current = false;
-    addLog(tr('logSetupReset'));
+    addLog('🔄 Настройка сброшена. Установите флаг.');
   };
 
   const handleStartBattle = () => {
@@ -1941,7 +1567,7 @@ export default function App() {
     const updatedGame = { ...game };
     startGame(updatedGame);
     setGame(updatedGame);
-    addLog(tr('logBattleStarted'));
+    addLog('⚔️ Бой начался! Ваш ход.');
   };
 
   const handleCellClick = async (visualRow, visualCol) => {
@@ -1962,7 +1588,6 @@ export default function App() {
             toRow: row,
             toCol: col
           });
-          audioManager.playSFX('move');
           deselectPiece();
           return;
         } else {
@@ -2026,37 +1651,27 @@ export default function App() {
 
   const processMoveResult = (updatedGame, result) => {
     deselectPiece();
-
-    // Озвучка события
-    if (result.type === 'move') {
-      audioManager.playSFX(result.piece && result.piece.owner === PLAYER ? 'move' : 'opponent_move');
-    } else if (result.type === 'battle_trap') {
-      audioManager.playSFX('trap');
-    } else if (result.type === 'battle' || result.type === 'battle_flag') {
-      audioManager.playSFX(result.result === 'draw' ? 'tie' : 'combat');
-    }
-
+    
     if (result.type === 'move') {
       const fromCoord = formatBoardCoord(result.from[0], result.from[1]);
       const toCoord = formatBoardCoord(result.to[0], result.to[1]);
-      const who = result.piece.owner === PLAYER ? tr('you') : tr('bot');
-      addLog(tr('logMoved', { who, from: fromCoord, to: toCoord }));
+      addLog(`🏃‍♂️ ${result.piece.owner === PLAYER ? 'Игрок' : 'Бот'} переместился с ${fromCoord} на ${toCoord}`);
     } else if (result.type === 'battle' || result.type === 'battle_trap' || result.type === 'battle_flag') {
-      const attackerName = result.attacker.owner === PLAYER ? tr('you') : tr('bot');
-      const defenderName = result.defender.owner === PLAYER ? tr('you') : tr('bot');
+      const attackerName = result.attacker.owner === PLAYER ? 'Игрок' : 'Бот';
+      const defenderName = result.defender.owner === PLAYER ? 'Игрок' : 'Бот';
       const attSym = PIECE_SYMBOLS[result.attacker.pieceType || result.attacker.type];
       const defSym = PIECE_SYMBOLS[result.defender.pieceType || result.defender.type];
-
-      let battleDesc = tr('logBattle', { att: attackerName, attSym, def: defenderName, defSym });
-
+      
+      let battleDesc = `⚔️ Битва: ${attackerName} (${attSym}) vs ${defenderName} (${defSym})`;
+      
       if (result.result === 'win') {
-        battleDesc += tr('logBattleWin', { who: attackerName });
+        battleDesc += ` -> Победа ${result.attacker.owner === PLAYER ? 'Игрока' : 'Бота'}!`;
       } else if (result.result === 'lose') {
-        battleDesc += tr('logBattleWin', { who: defenderName });
+        battleDesc += ` -> Победа ${result.defender.owner === PLAYER ? 'Игрока' : 'Бота'}!`;
       } else {
-        battleDesc += tr('logBattleTie');
+        battleDesc += ` -> НИЧЬЯ! Требуется выбор для переигровки.`;
       }
-
+      
       addLog(battleDesc);
     }
     
@@ -2073,17 +1688,12 @@ export default function App() {
     
     if (updatedGame.currentPlayer === COMPUTER) {
       triggerBotTurn(updatedGame);
-    } else {
-      const mover = (result.piece && result.piece.owner) || (result.attacker && result.attacker.owner);
-      if (mover === COMPUTER && !updatedGame.battleState) {
-        audioManager.playSFX('turn');
-      }
     }
   };
 
   const triggerBotTurn = (currentGame) => {
     setIsBotThinking(true);
-    addLog(tr('logBotThinking'));
+    addLog('🤖 Бот размышляет над ходом...');
     
     setTimeout(() => {
       const updatedGame = { ...currentGame };
@@ -2109,10 +1719,10 @@ export default function App() {
     
     const playerChoiceSym = PIECE_SYMBOLS[playerChoice];
     const aiChoiceSym = PIECE_SYMBOLS[aiChoice];
-    addLog(tr('logReplay', { mine: playerChoiceSym, opp: tr('bot'), theirs: aiChoiceSym }));
+    addLog(`🎯 Переигровка: Вы (${playerChoiceSym}) vs Бот (${aiChoiceSym})`);
     
     if (result.type === 'tie_resolved') {
-      addLog(tr('logTieResolved', { result: result.winner === PLAYER ? tr('victory') : tr('defeat') }));
+      addLog(`⚔️ Ничья разрешена: ${result.winner === PLAYER ? 'Победа!' : 'Поражение.'}`);
       endTurn(updatedGame);
       setGame(updatedGame);
       
@@ -2125,8 +1735,7 @@ export default function App() {
         triggerBotTurn(updatedGame);
       }
     } else if (result.type === 'mutual_annihilation') {
-      audioManager.playSFX('trap');
-      addLog(tr('logMutualDestruction'));
+      addLog(`💥 Взаимоуничтожение после 6 ничьих! Обе фигуры погибли.`);
       endTurn(updatedGame);
       setGame(updatedGame);
       
@@ -2139,7 +1748,7 @@ export default function App() {
         triggerBotTurn(updatedGame);
       }
     } else {
-      addLog(tr('logTieAgain', { round: result.drawRound }));
+      addLog(`🤝 Снова ничья! Раунд переигровки: ${result.drawRound}`);
       setGame(updatedGame);
     }
   };
@@ -2149,29 +1758,23 @@ export default function App() {
     const isDraw = winner === 'draw';
     const skipRating = reason === 'setup_timeout';
 
-    if (gameMode !== 'pvp' && reason !== 'setup_timeout') {
-      if (playerWon) audioManager.playSFX('victory');
-      else if (!isDraw) audioManager.playSFX('defeat');
-    }
-
     let desc;
     if (reason === 'setup_timeout') {
-      desc = tr('logSetupTimeout');
+      desc = '⏱️ Время на расстановку вышло — партия не началась.';
     } else {
-      const resultText = isDraw
-        ? tr('resultDraw')
-        : (playerWon ? tr('resultPlayerWin') : tr('resultPlayerLose'));
-      desc = tr('logGameOver', { result: resultText });
-      const reasonKeys = {
-        flag_captured: 'reasonFlagCaptured',
-        no_pieces: 'reasonNoPieces',
-        hopeless: 'reasonHopeless',
-        no_moves: 'reasonNoMoves',
-        surrender: 'reasonSurrender',
-        no_captures_draw: 'reasonDrawNoCapture'
-      };
-      if (reasonKeys[reason]) {
-        desc += ` (${tr(reasonKeys[reason])})`;
+      desc = `🏁 Игра окончена: ${isDraw ? 'Ничья!' : (playerWon ? 'Победа игрока!' : 'Поражение игрока!')}`;
+      if (reason === 'flag_captured') {
+        desc += ' (Флаг захвачен)';
+      } else if (reason === 'no_pieces') {
+        desc += ' (Все боевые фигуры уничтожены)';
+      } else if (reason === 'hopeless') {
+        desc += ' (Положение безнадежно)';
+      } else if (reason === 'no_moves') {
+        desc += ' (Нет доступных ходов)';
+      } else if (reason === 'surrender') {
+        desc += ' (Сдался)';
+      } else if (reason === 'no_captures_draw') {
+        desc += ' (20 ходов без взятий)';
       }
     }
 
@@ -2208,83 +1811,8 @@ export default function App() {
     handleGameOver(COMPUTER, 'surrender');
   };
 
-  // ─── Модалка настроек: скины, язык, аудио ───
-  const settingsModal = (
-    <Modal
-      animationType="fade"
-      transparent
-      visible={settingsOpen}
-      onRequestClose={() => setSettingsOpen(false)}
-    >
-      <View style={[styles.modalOverlay, layout.mobile && styles.modalOverlayMobile]}>
-        <View style={[styles.modalCard, styles.settingsCard, layout.mobile && styles.modalCardMobile]}>
-          <Text style={styles.modalTitle}>⚙️ {tr('settingsTitle')}</Text>
-          <ScrollView style={styles.settingsScroll} showsVerticalScrollIndicator={false}>
-            <Text style={styles.settingsSectionTitle}>{tr('selectSkin')}</Text>
-            <View style={styles.skinRow}>
-              {SKIN_ORDER.map((id) => {
-                const sk = SKINS[id];
-                const active = id === skinId;
-                return (
-                  <TouchableOpacity
-                    key={id}
-                    style={[styles.skinOption, active && styles.skinOptionActive]}
-                    activeOpacity={0.8}
-                    onPress={() => changeSkin(id)}
-                  >
-                    <Text style={styles.skinOptionIcon}>{sk.icon}</Text>
-                    <Text style={[styles.skinOptionLabel, active && styles.skinOptionLabelActive]}>
-                      {tr(sk.nameKey)}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            <Text style={styles.settingsSectionTitle}>{tr('selectLanguage')}</Text>
-            <View style={styles.langGrid}>
-              {SUPPORTED_LOCALES.map((l) => (
-                <TouchableOpacity
-                  key={l}
-                  style={[styles.langChip, l === locale && styles.langChipActive]}
-                  onPress={() => changeLocale(l)}
-                >
-                  <Text style={[styles.langChipText, l === locale && styles.langChipTextActive]}>
-                    {LANG_NAMES[l] || l}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={styles.settingsSectionTitle}>{tr('audioSettings')}</Text>
-            {[
-              ['bgmEnabled', 'bgmToggle'],
-              ['sfxEnabled', 'sfxToggle'],
-              ['voiceEnabled', 'voiceToggle']
-            ].map(([key, labelKey]) => (
-              <TouchableOpacity
-                key={key}
-                style={styles.audioRow}
-                activeOpacity={0.7}
-                onPress={() => changeAudio({ [key]: !audioSettings[key] })}
-              >
-                <Text style={styles.audioRowLabel}>{tr(labelKey)}</Text>
-                <View style={[styles.togglePill, audioSettings[key] && styles.togglePillOn]}>
-                  <View style={[styles.toggleKnob, audioSettings[key] && styles.toggleKnobOn]} />
-                </View>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-          <TouchableOpacity style={styles.settingsCloseBtn} onPress={() => setSettingsOpen(false)}>
-            <Text style={styles.settingsCloseBtnText}>{tr('close')}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
-  );
-
   if (loading) {
-    return <BrandSplash progress={loadProgress} caption={loadCaption} />;
+    return <BrandSplash />;
   }
 
   // --- Login / Splash Screen ---
@@ -2294,48 +1822,51 @@ export default function App() {
       && typeof window !== 'undefined'
       && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
     return (
-      <View style={[brandStyles.container, brandStyles.brandBg]}>
+      <View style={[styles.container, styles.appBg]}>
         <StatusBar style="dark" />
-        <SafeAreaView style={brandStyles.flex1}>
-          <ScrollView
-            style={brandStyles.scrollFlex}
-            contentContainerStyle={brandStyles.authScroll}
-            showsVerticalScrollIndicator={false}
-          >
+        <SafeAreaView style={styles.flex1}>
+          <View style={styles.authScreen}>
             <PageShell narrow padH={layout.padH}>
-              <View style={brandStyles.authArtFrame}>
-                <Image source={BRAND_ART} style={brandStyles.authArtImg} resizeMode="cover" />
+              <View style={styles.authHero}>
+                <View style={styles.splashLogoBadge}>
+                  <Text style={styles.splashLogoEmoji}>🪨📄✂️</Text>
+                </View>
+                <Text style={styles.splashTitle}>RPS Battle</Text>
+                <Text style={styles.splashTagline}>Тактика · Камень · Бумага · Ножницы</Text>
               </View>
 
-              <View style={[brandStyles.authSurface, brandStyles.authCard, layout.compact && brandStyles.authCardCompact]}>
-                <Text style={brandStyles.authCardTitle}>{tr('authTitle')}</Text>
-                <Text style={brandStyles.subtitle}>{tr('authDesc')}</Text>
+              <SurfaceCard style={[styles.authCard, layout.compact && styles.authCardCompact]}>
+                <Text style={styles.authCardTitle}>Захвати вражеский флаг</Text>
+                <Text style={styles.subtitle}>
+                  Скрытые фигуры, ловушки и дуэли «камень-ножницы-бумага».
+                  Сражайся с 20 ИИ-ботами или с живыми игроками онлайн.
+                </Text>
 
                 {isWebPlatform && (
-                  <TouchableOpacity style={brandStyles.loginBtn} onPress={handleLogin}>
-                    <Text style={brandStyles.loginBtnText}>{tr('loginGoogle')}</Text>
+                  <TouchableOpacity style={styles.loginBtn} onPress={handleLogin}>
+                    <Text style={styles.loginBtnText}>Войти через Google</Text>
                   </TouchableOpacity>
                 )}
 
                 <TouchableOpacity
-                  style={[brandStyles.loginBtnGuest, !isWebPlatform && brandStyles.loginBtnGuestPrimary]}
+                  style={[styles.loginBtnGuest, !isWebPlatform && styles.loginBtnGuestPrimary]}
                   onPress={handleGuestLogin}
                 >
-                  <Text style={[brandStyles.loginBtnGuestText, !isWebPlatform && brandStyles.loginBtnGuestTextPrimary]}>
-                    {tr('playAsGuest')}
+                  <Text style={[styles.loginBtnGuestText, !isWebPlatform && styles.loginBtnGuestTextPrimary]}>
+                    Играть без регистрации
                   </Text>
                 </TouchableOpacity>
 
                 {isLocalhost && (
-                  <TouchableOpacity style={brandStyles.loginBtnDev} onPress={handleDevLogin}>
-                    <Text style={brandStyles.loginBtnDevText}>Войти как DevTester (Admin)</Text>
+                  <TouchableOpacity style={styles.loginBtnDev} onPress={handleDevLogin}>
+                    <Text style={styles.loginBtnDevText}>Войти как DevTester (Admin)</Text>
                   </TouchableOpacity>
                 )}
 
-                {error && <Text style={brandStyles.errorText}>{error}</Text>}
-              </View>
+                {error && <Text style={styles.errorText}>{error}</Text>}
+              </SurfaceCard>
             </PageShell>
-          </ScrollView>
+          </View>
         </SafeAreaView>
       </View>
     );
@@ -2349,7 +1880,7 @@ export default function App() {
 
     return (
       <SafeAreaView style={[styles.container, styles.appBg]}>
-        <StatusBar style={skin.statusBar === 'light' ? 'light' : 'dark'} />
+        <StatusBar style="dark" />
         <ScrollView
           style={styles.scrollFlex}
           contentContainerStyle={[
@@ -2367,29 +1898,29 @@ export default function App() {
                   setScreen('lobby');
                 }}
               >
-                <Text style={styles.botSelectBackBtnText}>← {tr('back')}</Text>
+                <Text style={styles.botSelectBackBtnText}>← Назад</Text>
               </TouchableOpacity>
             </View>
 
             <View style={[styles.sectionHeader, { marginTop: layout.gap }]}>
               <Text style={[styles.sectionTitle, layout.compact && styles.sectionTitleCompact]}>
-                {tr('arenaTitle')}
+                🌐 PvP арена
               </Text>
               <Text style={styles.sectionSubtitle}>
-                {tr('arenaSubtitle')}
+                Найдите соперника или создайте комнату
               </Text>
               <View style={styles.arenaStatRow}>
                 <View style={styles.arenaStatPill}>
                   <Text style={styles.arenaStatPillValue}>{arenaOnlineCount}</Text>
-                  <Text style={styles.arenaStatPillLabel}>{tr('pillOnline')}</Text>
+                  <Text style={styles.arenaStatPillLabel}>онлайн</Text>
                 </View>
                 <View style={styles.arenaStatPill}>
                   <Text style={styles.arenaStatPillValue}>{visiblePlayers.length}</Text>
-                  <Text style={styles.arenaStatPillLabel}>{tr('pillAvailable')}</Text>
+                  <Text style={styles.arenaStatPillLabel}>доступны</Text>
                 </View>
                 <View style={styles.arenaStatPill}>
                   <Text style={styles.arenaStatPillValue}>{publicRooms.length}</Text>
-                  <Text style={styles.arenaStatPillLabel}>{tr('pillRooms')}</Text>
+                  <Text style={styles.arenaStatPillLabel}>комнат</Text>
                 </View>
               </View>
             </View>
@@ -2397,19 +1928,19 @@ export default function App() {
             {myWaitingRoomId && (
               <SurfaceCard style={{ padding: layout.cardPad, marginBottom: layout.gap }}>
                 <View style={styles.arenaWaitingCard}>
-                  <ActivityIndicator size="small" color={ui.accent} />
+                  <ActivityIndicator size="small" color="#c2410c" />
                   <View style={styles.arenaWaitingCardText}>
                     <Text style={styles.arenaWaitingTitle}>
-                      {myWaitingRoomPrivate ? tr('privateRoom') : tr('yourOpenRoom')}
+                      {myWaitingRoomPrivate ? 'Приватная комната' : 'Ваша открытая комната'}
                     </Text>
                     <Text style={styles.arenaWaitingDesc}>
                       {myWaitingRoomPrivate && createdRoomCode
-                        ? tr('waitingOpponentCode', { code: createdRoomCode })
-                        : tr('waitingOpponent')}
+                        ? `Ожидание соперника. Код: ${createdRoomCode}`
+                        : 'Ожидание соперника…'}
                     </Text>
                   </View>
                   <TouchableOpacity style={styles.arenaWaitingCancelBtn} onPress={handleCloseMyWaitingRoom}>
-                    <Text style={styles.arenaWaitingCancelText}>{tr('cancel')}</Text>
+                    <Text style={styles.arenaWaitingCancelText}>Отмена</Text>
                   </TouchableOpacity>
                 </View>
               </SurfaceCard>
@@ -2418,21 +1949,21 @@ export default function App() {
             {(arenaStatus || isSearchingMatch) && (
               <SurfaceCard accent style={[styles.arenaStatusCard, { padding: layout.cardPad, marginBottom: layout.gap }]}>
                 {isSearchingMatch && (
-                  <ActivityIndicator size="small" color={ui.accent} style={{ marginBottom: 8 }} />
+                  <ActivityIndicator size="small" color="#c2410c" style={{ marginBottom: 8 }} />
                 )}
                 <Text style={styles.arenaStatusText}>
-                  {isSearchingMatch ? tr('searchingOpponent') : arenaStatus}
+                  {isSearchingMatch ? 'Поиск соперника...' : arenaStatus}
                 </Text>
                 {isSearchingMatch && (
                   <TouchableOpacity style={styles.arenaLinkBtn} onPress={handleLeaveQueue}>
-                    <Text style={styles.arenaLinkBtnText}>{tr('cancelSearch')}</Text>
+                    <Text style={styles.arenaLinkBtnText}>Отменить поиск</Text>
                   </TouchableOpacity>
                 )}
               </SurfaceCard>
             )}
 
             <SurfaceCard style={{ padding: layout.cardPad, marginBottom: layout.gap }}>
-              <Text style={styles.cardTitle}>{tr('gameModes')}</Text>
+              <Text style={styles.cardTitle}>Режимы игры</Text>
               <View style={styles.arenaModeGrid}>
                 <TouchableOpacity
                   style={[
@@ -2445,8 +1976,8 @@ export default function App() {
                   activeOpacity={0.85}
                 >
                   <Text style={styles.arenaModeEmoji}>⚡</Text>
-                  <Text style={styles.arenaModeTitle}>{tr('quickMatch')}</Text>
-                  <Text style={styles.arenaModeDesc}>{tr('quickMatchDesc')}</Text>
+                  <Text style={styles.arenaModeTitle}>Быстрый матч</Text>
+                  <Text style={styles.arenaModeDesc}>Автоподбор соперника</Text>
                 </TouchableOpacity>
 
                 <View style={[styles.arenaModeRow, isWide && styles.arenaModeRowWide]}>
@@ -2457,8 +1988,8 @@ export default function App() {
                     activeOpacity={0.85}
                   >
                     <Text style={styles.arenaModeEmoji}>🔒</Text>
-                    <Text style={styles.arenaModeTitle}>{tr('privateMode')}</Text>
-                    <Text style={styles.arenaModeDesc}>{tr('privateModeDesc')}</Text>
+                    <Text style={styles.arenaModeTitle}>Приватная</Text>
+                    <Text style={styles.arenaModeDesc}>По коду</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.arenaModeTile, roomsAtCap && styles.arenaModeTileDisabled]}
@@ -2467,23 +1998,23 @@ export default function App() {
                     activeOpacity={0.85}
                   >
                     <Text style={styles.arenaModeEmoji}>🌐</Text>
-                    <Text style={styles.arenaModeTitle}>{tr('openMode')}</Text>
-                    <Text style={styles.arenaModeDesc}>{tr('openModeDesc')}</Text>
+                    <Text style={styles.arenaModeTitle}>Открытая</Text>
+                    <Text style={styles.arenaModeDesc}>В списке</Text>
                   </TouchableOpacity>
                 </View>
               </View>
 
               {roomsAtCap && (
-                <Text style={[styles.infoBody, { marginTop: 12, color: ui.warning }]}>
-                  {tr('roomsCapHint')}
+                <Text style={[styles.infoBody, { marginTop: 12, color: '#b45309' }]}>
+                  Лимит 10 комнат — присоединяйтесь к существующей
                 </Text>
               )}
             </SurfaceCard>
 
             <SurfaceCard style={{ padding: layout.cardPad, marginBottom: layout.gap }}>
-              <Text style={styles.cardTitle}>{tr('enterByCode')}</Text>
+              <Text style={styles.cardTitle}>Войти по коду</Text>
               <Text style={[styles.infoBody, { marginBottom: 12 }]}>
-                {tr('privateRoomsHidden')}
+                Приватные комнаты не видны в списке
               </Text>
               <View style={[styles.arenaCodeRow, layout.mobile && styles.arenaCodeRowStack]}>
                 <TextInput
@@ -2491,7 +2022,7 @@ export default function App() {
                     styles.arenaCodeInput,
                     layout.mobile ? styles.arenaCodeInputStack : styles.arenaCodeInputFlex
                   ]}
-                  placeholder={tr('codePlaceholder')}
+                  placeholder="Код"
                   placeholderTextColor="#9ca3af"
                   value={roomCodeInput}
                   onChangeText={setRoomCodeInput}
@@ -2502,7 +2033,7 @@ export default function App() {
                   style={[styles.arenaCodeBtn, layout.mobile && styles.arenaCodeBtnStack]}
                   onPress={handleJoinByCode}
                 >
-                  <Text style={styles.arenaCodeBtnText}>{tr('enter')}</Text>
+                  <Text style={styles.arenaCodeBtnText}>Войти</Text>
                 </TouchableOpacity>
               </View>
             </SurfaceCard>
@@ -2515,13 +2046,13 @@ export default function App() {
                   { padding: layout.cardPad, marginBottom: isWide ? 0 : layout.gap }
                 ]}
               >
-                <Text style={styles.cardTitle}>{tr('openRooms')}</Text>
-                <Text style={[styles.infoBody, { marginBottom: 12 }]}>{tr('upTo10Rooms')}</Text>
+                <Text style={styles.cardTitle}>Открытые комнаты</Text>
+                <Text style={[styles.infoBody, { marginBottom: 12 }]}>До 10 одновременно</Text>
                 {publicRooms.filter((room) =>
                   !user || String(room.creatorId) !== String(user.id)
                 ).length === 0 ? (
                   <View style={styles.arenaEmptyBox}>
-                    <Text style={styles.arenaEmptyText}>{tr('noOpenRooms')}</Text>
+                    <Text style={styles.arenaEmptyText}>Пока нет открытых комнат</Text>
                   </View>
                 ) : (
                   publicRooms
@@ -2530,17 +2061,17 @@ export default function App() {
                       <View key={room.id} style={styles.arenaRoomCard}>
                         <View style={styles.arenaRoomCardInfo}>
                           <Text style={styles.arenaRoomName} numberOfLines={1}>
-                            {room.creatorName || tr('playerFallback')}
+                            {room.creatorName || 'Игрок'}
                           </Text>
                           <Text style={styles.arenaRoomMeta}>
-                            {tr('openRoomMeta', { count: room.playersCount || 1 })}
+                            {room.playersCount || 1}/2 · открытая
                           </Text>
                         </View>
                         <TouchableOpacity
                           style={styles.arenaJoinBtn}
                           onPress={() => handleJoinPublicRoom(room.id)}
                         >
-                          <Text style={styles.arenaJoinBtnText}>{tr('enter')}</Text>
+                          <Text style={styles.arenaJoinBtnText}>Войти</Text>
                         </TouchableOpacity>
                       </View>
                     ))
@@ -2554,13 +2085,13 @@ export default function App() {
                   { padding: layout.cardPad, marginBottom: 0 }
                 ]}
               >
-                <Text style={styles.cardTitle}>{tr('playersOnline')}</Text>
+                <Text style={styles.cardTitle}>Игроки онлайн</Text>
                 <Text style={[styles.infoBody, { marginBottom: 12 }]}>
-                  {tr('upTo20List')}
+                  До 20 в списке
                 </Text>
                 {visiblePlayers.length === 0 ? (
                   <View style={styles.arenaEmptyBox}>
-                    <Text style={styles.arenaEmptyText}>{tr('nobodyElse')}</Text>
+                    <Text style={styles.arenaEmptyText}>Пока никого кроме вас</Text>
                   </View>
                 ) : (
                   visiblePlayers.map((p) => (
@@ -2574,28 +2105,28 @@ export default function App() {
                       )}
                       <View style={styles.arenaPlayerInfo}>
                         <Text style={styles.arenaPlayerName} numberOfLines={1}>
-                          {p.name || tr('playerFallback')}
+                          {p.name || 'Игрок'}
                         </Text>
                         <Text style={styles.arenaPlayerRating}>{p.ratingMmr ?? 1000} MMR</Text>
                         {(() => {
                           const stats = user?.pvpOpponentStats?.find(s => String(s.opponentId || s.opponent?.id) === String(p.id)) || { wins: 0, losses: 0, draws: 0, gamesPlayed: 0 };
                           return (
-                            <Text style={{ fontSize: 11, color: ui.textSecondary, marginTop: 2 }}>
-                              {tr('statsLine', { games: stats.gamesPlayed, wins: stats.wins, losses: stats.losses, draws: stats.draws })}
+                            <Text style={{ fontSize: 11, color: '#6b5744', marginTop: 2 }}>
+                              Игр: {stats.gamesPlayed} · В:{stats.wins} П:{stats.losses} Н:{stats.draws}
                             </Text>
                           );
                         })()}
                       </View>
                       {p.inGame ? (
                         <View style={styles.arenaBusyBadge}>
-                          <Text style={styles.arenaBusyLabel}>{tr('inGame')}</Text>
+                          <Text style={styles.arenaBusyLabel}>В игре</Text>
                         </View>
                       ) : (
                         <TouchableOpacity
                           style={styles.arenaChallengeBtn}
                           onPress={() => handleChallengePlayer(p.id)}
                         >
-                          <Text style={styles.arenaChallengeBtnText}>{tr('challenge')}</Text>
+                          <Text style={styles.arenaChallengeBtnText}>Вызов</Text>
                         </TouchableOpacity>
                       )}
                     </View>
@@ -2606,20 +2137,19 @@ export default function App() {
           </PageShell>
         </ScrollView>
 
-        {settingsModal}
         <Modal animationType="fade" transparent visible={!!pendingInvite}>
           <View style={styles.modalOverlay}>
             <View style={styles.modalCard}>
-              <Text style={styles.modalTitle}>{tr('duelChallenge')}</Text>
+              <Text style={styles.modalTitle}>Вызов на дуэль</Text>
               <Text style={styles.modalSubtitle}>
-                {tr('challengesYou', { name: pendingInvite?.from?.name || tr('playerFallback') })}
+                {pendingInvite?.from?.name || 'Игрок'} вызывает вас на бой
               </Text>
               <View style={[styles.choiceRow, { marginTop: 16 }]}>
                 <TouchableOpacity style={styles.choiceBtn} onPress={() => setPendingInvite(null)}>
-                  <Text style={styles.choiceText}>{tr('decline')}</Text>
+                  <Text style={styles.choiceText}>Отклонить</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.choiceBtn, { backgroundColor: ui.accent }]} onPress={handleAcceptInvite}>
-                  <Text style={[styles.choiceText, { color: ui.onAccent }]}>{tr('accept')}</Text>
+                <TouchableOpacity style={[styles.choiceBtn, { backgroundColor: '#c2410c' }]} onPress={handleAcceptInvite}>
+                  <Text style={[styles.choiceText, { color: '#fff' }]}>Принять</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -2633,25 +2163,22 @@ export default function App() {
   if (screen === 'matchmaking') {
     return (
       <SafeAreaView style={[styles.container, styles.appBg]}>
-        <StatusBar style={skin.statusBar === 'light' ? 'light' : 'dark'} />
+        <StatusBar style="dark" />
         <View style={styles.scrollFlex}>
           <PageShell narrow style={styles.centeredShell}>
             <SurfaceCard style={styles.loadingCard}>
-              <ActivityIndicator size="large" color={ui.accent} />
+              <ActivityIndicator size="large" color="#c2410c" />
               <Text style={[styles.loadingText, { fontSize: 20, fontWeight: '800', marginTop: 24 }]}>
-                {tr('searchingOpponent')}
+                Поиск соперника...
               </Text>
-              <Text style={{ color: ui.textSecondary, marginTop: 8, fontSize: 14 }}>
-                {tr('queueTime', { sec: matchmakingTime })}
+              <Text style={{ color: '#6b5744', marginTop: 8, fontSize: 14 }}>
+                Время в очереди: {matchmakingTime} сек.
               </Text>
               <TouchableOpacity
                 style={[styles.actionBtn, styles.primaryBtnOutline, { marginTop: 24, alignSelf: 'stretch', justifyContent: 'center' }]}
-                onPress={() => {
-                  handleLeaveQueue();
-                  setScreen('lobby');
-                }}
+                onPress={handleLeaveQueue}
               >
-                <Text style={styles.primaryBtnOutlineText}>{tr('cancel')}</Text>
+                <Text style={styles.primaryBtnOutlineText}>Отмена</Text>
               </TouchableOpacity>
             </SurfaceCard>
           </PageShell>
@@ -2663,11 +2190,14 @@ export default function App() {
   // --- Lobby View ---
   if (screen === 'lobby') {
     const botList = botRegistry.list();
-    const quickOpponents = buildQuickOpponents(user, arenaPlayers, botList, tr('playerFallback'));
+    const quickOpponents = buildQuickOpponents(user, arenaPlayers, botList);
+    const pvpWins = user.stats?.wins ?? 0;
+    const pvpLosses = user.stats?.losses ?? 0;
+    const pvpDraws = user.stats?.draws ?? 0;
 
     return (
       <SafeAreaView style={[styles.container, styles.appBg]}>
-        <StatusBar style={skin.statusBar === 'light' ? 'light' : 'dark'} />
+        <StatusBar style="dark" />
         <ScrollView
           style={styles.scrollFlex}
           contentContainerStyle={[
@@ -2698,77 +2228,110 @@ export default function App() {
                       {user.nickname}
                     </Text>
                     <Text style={styles.profileTapHint} numberOfLines={1}>
-                      🏆 {user.stats?.ratingMmr ?? 1000} MMR · {tr('profile')} ›
+                      Мой профиль ›
                     </Text>
                   </View>
                 </TouchableOpacity>
 
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <TouchableOpacity
-                    style={styles.headerIconBtn}
-                    onPress={() => setSettingsOpen(true)}
-                    accessibilityRole="button"
-                    accessibilityLabel={tr('settings')}
-                  >
-                    <Text style={styles.headerIconBtnText}>⚙️</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.lobbyLogoutBtn}
-                    onPress={handleLogout}
-                  >
-                    <Text style={styles.lobbyLogoutBtnText}>{tr('logoutAccount')}</Text>
-                  </TouchableOpacity>
-                </View>
+                <TouchableOpacity
+                  style={styles.lobbyLogoutBtn}
+                  onPress={handleLogout}
+                >
+                  <Text style={styles.lobbyLogoutBtnText}>Выйти</Text>
+                </TouchableOpacity>
               </View>
 
             </SurfaceCard>
 
-            {/* Игровые режимы — главный элемент лобби */}
-            <SurfaceCard style={{ padding: layout.cardPad, marginBottom: layout.gap }}>
-              <Text style={styles.cardTitle}>{tr('playSection')}</Text>
-              <TouchableOpacity
-                style={styles.modeTileHero}
-                activeOpacity={0.85}
-                onPress={handleQuickMatch}
+            <View style={[styles.blockRow, isWide && styles.blockRowWide, { gap: layout.gap }]}>
+              <SurfaceCard
+                style={[
+                  styles.blockFlex,
+                  isWide && styles.blockHalf,
+                  { padding: layout.cardPad, marginBottom: layout.gap }
+                ]}
               >
-                <Text style={styles.modeTileEmoji}>⚡</Text>
-                <View style={styles.modeTileBody}>
-                  <Text style={styles.modeTileHeroTitle}>{tr('quickGame')}</Text>
-                  <Text style={styles.modeTileHeroDesc}>{tr('quickGameDesc')}</Text>
+                <Text style={styles.cardTitle}>🏆 Рейтинг (PvP)</Text>
+                <Text style={styles.profileSectionHint}>Только игры с живыми людьми</Text>
+                <View style={styles.ratingRow}>
+                  <Text style={[styles.ratingValue, layout.compact && styles.ratingValueCompact]}>
+                    {user.stats?.ratingMmr ?? 1000}
+                  </Text>
+                  <Text style={styles.ratingLabel}>MMR</Text>
                 </View>
-                <Text style={styles.modeTileChevron}>›</Text>
-              </TouchableOpacity>
-              <View style={styles.modeTileRow}>
+                <View style={styles.statsDivider} />
+                <View style={styles.winLossGrid}>
+                  <View style={styles.gridItem}>
+                    <Text style={[styles.gridValue, styles.greenText]}>{pvpWins}</Text>
+                    <Text style={styles.gridLabel}>Побед</Text>
+                  </View>
+                  <View style={styles.gridItem}>
+                    <Text style={[styles.gridValue, styles.redText]}>{pvpLosses}</Text>
+                    <Text style={styles.gridLabel}>Поражений</Text>
+                  </View>
+                  <View style={styles.gridItem}>
+                    <Text style={[styles.gridValue, styles.grayText]}>{pvpDraws}</Text>
+                    <Text style={styles.gridLabel}>Ничьих</Text>
+                  </View>
+                </View>
+              </SurfaceCard>
+
+              <SurfaceCard
+                style={[
+                  styles.blockFlex,
+                  isWide && styles.blockHalf,
+                  { padding: layout.cardPad, marginBottom: layout.gap }
+                ]}
+              >
+                <Text style={styles.cardTitle}>🎲 Во что играем?</Text>
                 <TouchableOpacity
-                  style={styles.modeTile}
+                  style={styles.modeTileHero}
                   activeOpacity={0.85}
                   onPress={openArena}
                 >
-                  <Text style={styles.modeTileEmoji}>🌐</Text>
-                  <Text style={styles.modeTileTitle}>{tr('arena')}</Text>
-                  <Text style={styles.modeTileDesc}>{tr('arenaTileDesc')}</Text>
+                  <Text style={styles.modeTileEmoji}>⚡</Text>
+                  <View style={styles.modeTileBody}>
+                    <Text style={styles.modeTileHeroTitle}>PvP арена</Text>
+                    <Text style={styles.modeTileHeroDesc}>Дуэли с живыми игроками за рейтинг</Text>
+                  </View>
+                  <Text style={styles.modeTileChevron}>›</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.modeTile}
-                  activeOpacity={0.85}
-                  onPress={() => {
-                    setProfileMenuOpen(false);
-                    setScreen('bot_select');
-                    setBotSelectTab('free');
-                  }}
-                >
-                  <Text style={styles.modeTileEmoji}>🤖</Text>
-                  <Text style={styles.modeTileTitle}>{tr('botsTile')}</Text>
-                  <Text style={styles.modeTileDesc}>{tr('botsTileDesc')}</Text>
-                </TouchableOpacity>
-              </View>
-            </SurfaceCard>
+                <View style={styles.modeTileRow}>
+                  <TouchableOpacity
+                    style={styles.modeTile}
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      setProfileMenuOpen(false);
+                      setScreen('bot_select');
+                      setBotSelectTab('free');
+                    }}
+                  >
+                    <Text style={styles.modeTileEmoji}>🤖</Text>
+                    <Text style={styles.modeTileTitle}>Боты</Text>
+                    <Text style={styles.modeTileDesc}>20 ИИ-соперников</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.modeTile}
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      setProfileMenuOpen(false);
+                      setScreen('bot_select');
+                      setBotSelectTab('tournament');
+                    }}
+                  >
+                    <Text style={styles.modeTileEmoji}>🏆</Text>
+                    <Text style={styles.modeTileTitle}>Башня</Text>
+                    <Text style={styles.modeTileDesc}>Испытание 20 этапов</Text>
+                  </TouchableOpacity>
+                </View>
+              </SurfaceCard>
+            </View>
 
             {quickOpponents.length > 0 && (
               <SurfaceCard style={{ padding: layout.cardPad, marginBottom: 0 }}>
-                <Text style={styles.cardTitle}>{tr('quickMatchSection')}</Text>
+                <Text style={styles.cardTitle}>⚡ Быстрый матч</Text>
                 <Text style={[styles.profileSectionHint, { marginBottom: 12 }]}>
-                  {tr('quickMatchHint')}
+                  Частые соперники · в приоритете люди онлайн
                 </Text>
                 <View style={styles.quickOpponentsRow}>
                   {quickOpponents.map((opp) => (
@@ -2779,7 +2342,7 @@ export default function App() {
                       onPress={() => {
                         if (opp.kind === 'human') {
                           handleChallengePlayer(opp.id);
-                          setArenaStatus(tr('challengeSentTo', { name: opp.name }));
+                          setArenaStatus(`Вызов отправлен: ${opp.name}`);
                           openArena();
                         } else {
                           handleStartBotGame(opp.id);
@@ -2800,20 +2363,16 @@ export default function App() {
                           style={styles.quickOpponentAvatar}
                         />
                       )}
-                      <Text style={styles.quickOpponentName} numberOfLines={1}>
-                        {opp.kind === 'bot'
-                          ? (TRANSLATIONS[locale]?.[`bot_${opp.id}_name`] || opp.name)
-                          : opp.name}
-                      </Text>
+                      <Text style={styles.quickOpponentName} numberOfLines={1}>{opp.name}</Text>
                       <Text style={styles.quickOpponentMeta} numberOfLines={1}>
                         {opp.kind === 'human'
-                          ? `${opp.ratingMmr ?? 1000} MMR · ${opp.online ? tr('online') : tr('offline')}`
-                          : (opp.modelAuthor ? tr('modelBy', { author: opp.modelAuthor }) : tr('aiOpponent'))}
+                          ? `${opp.ratingMmr ?? 1000} MMR · ${opp.online ? 'онлайн' : 'офлайн'}`
+                          : (opp.modelAuthor ? `Модель: ${opp.modelAuthor}` : 'ИИ-соперник')}
                       </Text>
                       <Text style={styles.quickOpponentGames}>
-                        {tr('statsLine', { games: opp.games, wins: opp.wins || 0, losses: opp.losses || 0, draws: opp.draws || 0 })}
+                        Игр: {opp.games} · В:{opp.wins || 0} П:{opp.losses || 0} Н:{opp.draws || 0}
                       </Text>
-                      <Text style={styles.quickOpponentPlay}>{tr('playNow')}</Text>
+                      <Text style={styles.quickOpponentPlay}>Играть →</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -2821,7 +2380,6 @@ export default function App() {
             )}
           </PageShell>
         </ScrollView>
-        {settingsModal}
       </SafeAreaView>
     );
   }
@@ -2835,14 +2393,14 @@ export default function App() {
 
     return (
       <SafeAreaView style={[styles.container, styles.appBg]}>
-        <StatusBar style={skin.statusBar === 'light' ? 'light' : 'dark'} />
+        <StatusBar style="dark" />
         <View style={[styles.profileScreenTopBar, { paddingHorizontal: layout.padH }]}>
           <PageShell padH={0} maxWidth={layout.shellMax} style={styles.botSelectTopBarInner}>
             <TouchableOpacity
               style={styles.botSelectBackBtn}
               onPress={() => setScreen('lobby')}
             >
-              <Text style={styles.botSelectBackBtnText}>← {tr('back')}</Text>
+              <Text style={styles.botSelectBackBtnText}>← Назад</Text>
             </TouchableOpacity>
           </PageShell>
         </View>
@@ -2867,24 +2425,24 @@ export default function App() {
                 <View style={styles.profileHeroInfo}>
                   <Text style={styles.profileHeroName}>{user.nickname}</Text>
                   <Text style={styles.profileHeroMeta}>
-                    {user.role === 'admin' ? tr('roleAdmin') : tr('rolePlayer')}
+                    {user.role === 'admin' ? '🛡️ Администратор' : '🎮 Игрок'}
                   </Text>
                   {user.email ? (
                     <Text style={styles.profileHeroMeta} numberOfLines={1}>{user.email}</Text>
                   ) : null}
                   <Text style={styles.profileHeroMeta}>
-                    {tr('platformLine', { platform: platformLabel(user.platform) })}
+                    Платформа: {platformLabel(user.platform)}
                   </Text>
                   <Text style={styles.profileHeroMeta}>
-                    {tr('playingSince', { date: formatProfileDate(user.createdAt) })}
+                    В игре с {formatProfileDate(user.createdAt)}
                   </Text>
                 </View>
               </View>
             </SurfaceCard>
 
             <SurfaceCard style={{ padding: layout.cardPad, marginBottom: layout.gap }}>
-              <Text style={styles.cardTitle}>{tr('vsHumans')}</Text>
-              <Text style={styles.profileSectionHint}>{tr('pvpMmrHint')}</Text>
+              <Text style={styles.cardTitle}>Против людей (PvP)</Text>
+              <Text style={styles.profileSectionHint}>Рейтинг MMR учитывает только дуэли с игроками</Text>
               <View style={styles.ratingRow}>
                 <Text style={styles.ratingValue}>{user.stats?.ratingMmr ?? 1000}</Text>
                 <Text style={styles.ratingLabel}>MMR</Text>
@@ -2893,47 +2451,47 @@ export default function App() {
               <View style={styles.winLossGrid}>
                 <View style={styles.gridItem}>
                   <Text style={[styles.gridValue, styles.greenText]}>{user.stats?.wins ?? 0}</Text>
-                  <Text style={styles.gridLabel}>{tr('winsLabel')}</Text>
+                  <Text style={styles.gridLabel}>Побед</Text>
                 </View>
                 <View style={styles.gridItem}>
                   <Text style={[styles.gridValue, styles.redText]}>{user.stats?.losses ?? 0}</Text>
-                  <Text style={styles.gridLabel}>{tr('lossesLabel')}</Text>
+                  <Text style={styles.gridLabel}>Поражений</Text>
                 </View>
                 <View style={styles.gridItem}>
                   <Text style={[styles.gridValue, styles.grayText]}>{user.stats?.draws ?? 0}</Text>
-                  <Text style={styles.gridLabel}>{tr('drawsLabel')}</Text>
+                  <Text style={styles.gridLabel}>Ничьих</Text>
                 </View>
               </View>
             </SurfaceCard>
 
             <SurfaceCard style={{ padding: layout.cardPad, marginBottom: layout.gap }}>
-              <Text style={styles.cardTitle}>{tr('vsBots')}</Text>
+              <Text style={styles.cardTitle}>Против ботов (PvE)</Text>
               <Text style={styles.profileSectionHint}>
                 {totalBotGames > 0
-                  ? tr('pveTotalHint', { count: totalBotGames })
-                  : tr('pveNoMmrHint')}
+                  ? `Всего ${totalBotGames} партий · рейтинг не меняется`
+                  : 'Рейтинг MMR за ботов не начисляется'}
               </Text>
               <View style={styles.winLossGrid}>
                 <View style={styles.gridItem}>
                   <Text style={[styles.gridValue, styles.greenText]}>{botTotals.wins}</Text>
-                  <Text style={styles.gridLabel}>{tr('winsLabel')}</Text>
+                  <Text style={styles.gridLabel}>Побед</Text>
                 </View>
                 <View style={styles.gridItem}>
                   <Text style={[styles.gridValue, styles.redText]}>{botTotals.losses}</Text>
-                  <Text style={styles.gridLabel}>{tr('lossesLabel')}</Text>
+                  <Text style={styles.gridLabel}>Поражений</Text>
                 </View>
                 <View style={styles.gridItem}>
                   <Text style={[styles.gridValue, styles.grayText]}>{botTotals.draws}</Text>
-                  <Text style={styles.gridLabel}>{tr('drawsLabel')}</Text>
+                  <Text style={styles.gridLabel}>Ничьих</Text>
                 </View>
               </View>
             </SurfaceCard>
 
             {pvpStats.length > 0 && (
               <SurfaceCard style={{ padding: layout.cardPad, marginBottom: layout.gap }}>
-                <Text style={styles.cardTitle}>{tr('playersDuels')}</Text>
+                <Text style={styles.cardTitle}>Игроки (дуэли)</Text>
                 {pvpStats.map((row) => {
-                  const name = row.opponent?.nickname || tr('playerFallback');
+                  const name = row.opponent?.nickname || 'Игрок';
                   return (
                     <View key={row.opponentId || row.id} style={styles.botStatRow}>
                       {row.opponent?.avatarUrl ? (
@@ -2946,12 +2504,12 @@ export default function App() {
                       <View style={styles.botStatBody}>
                         <Text style={styles.botStatName} numberOfLines={1}>{name}</Text>
                         <Text style={styles.botStatCounts}>
-                          <Text style={styles.greenText}>{row.wins} {tr('winsLabel')}</Text>
+                          <Text style={styles.greenText}>{row.wins} побед</Text>
                           {' · '}
-                          <Text style={styles.redText}>{row.losses} {tr('lossesLabel')}</Text>
+                          <Text style={styles.redText}>{row.losses} поражений</Text>
                         </Text>
                         <Text style={styles.botStatMeta}>
-                          {tr('totalWithDate', { count: row.gamesPlayed, date: formatProfileDate(row.lastPlayedAt) })}
+                          Всего {row.gamesPlayed} · {formatProfileDate(row.lastPlayedAt)}
                         </Text>
                       </View>
                     </View>
@@ -2961,20 +2519,20 @@ export default function App() {
             )}
 
             <SurfaceCard style={{ padding: layout.cardPad, marginBottom: layout.gap }}>
-              <Text style={styles.cardTitle}>{tr('botsByOpponent')}</Text>
+              <Text style={styles.cardTitle}>Боты (по оппонентам)</Text>
               <Text style={styles.profileSectionHint}>
                 {totalBotGames > 0
-                  ? tr('botsPlayedTotal', { count: totalBotGames })
-                  : tr('noBotGames')}
+                  ? `Сыграно ${totalBotGames} партий против ИИ`
+                  : 'Пока нет завершённых партий с ботами'}
               </Text>
               {botStats.length === 0 ? (
                 <Text style={styles.profileEmptyBots}>
-                  {tr('chooseBotHint')}
+                  Выберите бота в лобби и сыграйте — здесь появится счёт побед и поражений.
                 </Text>
               ) : (
                 botStats.map((row) => {
                   const botMeta = botRegistry.get(row.botId);
-                  const name = botName(botMeta) || row.botId;
+                  const name = botMeta?.name || row.botId;
                   return (
                     <View key={row.botId} style={styles.botStatRow}>
                       <Image
@@ -2984,18 +2542,19 @@ export default function App() {
                       <View style={styles.botStatBody}>
                         <Text style={styles.botStatName} numberOfLines={1}>{name}</Text>
                         <Text style={styles.botStatCounts}>
-                          <Text style={styles.greenText}>{row.wins} {tr('winsLabel')}</Text>
+                          <Text style={styles.greenText}>{row.wins} побед</Text>
                           {' · '}
-                          <Text style={styles.redText}>{row.losses} {tr('lossesLabel')}</Text>
+                          <Text style={styles.redText}>{row.losses} поражений</Text>
                           {row.draws > 0 ? (
                             <>
                               {' · '}
-                              <Text style={styles.grayText}>{row.draws} {tr('drawsLabel')}</Text>
+                              <Text style={styles.grayText}>{row.draws} ничьих</Text>
                             </>
                           ) : null}
                         </Text>
                         <Text style={styles.botStatMeta}>
-                          {tr('totalWithLast', { count: row.gamesPlayed, date: formatProfileDate(row.lastPlayedAt) })}
+                          Всего {row.gamesPlayed} · последняя партия{' '}
+                          {formatProfileDate(row.lastPlayedAt)}
                         </Text>
                       </View>
                     </View>
@@ -3005,7 +2564,7 @@ export default function App() {
             </SurfaceCard>
 
             <TouchableOpacity style={styles.profileLogoutBtn} onPress={handleLogout}>
-              <Text style={styles.profileLogoutBtnText}>{tr('logoutAccount')}</Text>
+              <Text style={styles.profileLogoutBtnText}>Выйти из аккаунта</Text>
             </TouchableOpacity>
           </PageShell>
         </ScrollView>
@@ -3019,8 +2578,7 @@ export default function App() {
     const easyBots = listBots.filter((b) => b.tier === 'easy');
     const mediumBots = listBots.filter((b) => b.tier === 'medium');
     const hardBots = listBots.filter((b) => b.tier === 'hard');
-    // Три колонки по уровням — только на широких экранах; на телефоне сетка 2 колонки
-    const isWeb = isWide;
+    const isWeb = Platform.OS === 'web';
 
     const TOURNAMENT_LADDER_V1 = [
       'rabbit',
@@ -3084,7 +2642,7 @@ export default function App() {
       const isSelected = selectedBotId === bot.id;
       const cardStyles = [
         styles.botCard,
-        isWeb ? styles.botCardWeb : styles.botCardMobile,
+        isWeb && styles.botCardWeb,
         bot.tier === 'easy' && styles.botCardEasy,
         bot.tier === 'medium' && styles.botCardMedium,
         bot.tier === 'hard' && styles.botCardHard,
@@ -3106,24 +2664,23 @@ export default function App() {
                 style={styles.botCardAvatar}
               />
               <View style={styles.botNameCol}>
-                <Text style={styles.botName}>{botName(bot)}</Text>
-                <Text style={styles.botAlgorithm}>{bot.tier ? tr(`diff_${bot.tier}`) : bot.difficultyLabel}</Text>
+                <Text style={styles.botName}>{bot.name}</Text>
+                <Text style={styles.botAlgorithm}>{bot.difficultyLabel}</Text>
               </View>
             </View>
-            <Text style={styles.botDescription} numberOfLines={isSelected ? 4 : 2}>
-              {botDesc(bot)}
+            <Text style={styles.botDescription} numberOfLines={3}>
+              {bot.longDescription || bot.shortDescription}
             </Text>
-            {isSelected && bot.modelAuthor ? (
+            {bot.modelAuthor ? (
               <Text style={styles.botModelAuthor} numberOfLines={2}>
-                {tr('modelBy', { author: bot.modelAuthor })}
+                Модель: {bot.modelAuthor}
               </Text>
             ) : null}
             {(() => {
               const stats = user?.botOpponentStats?.find((s) => s.botId === bot.id) || { wins: 0, losses: 0, draws: 0, gamesPlayed: 0 };
-              if (!stats.gamesPlayed && !isSelected) return null;
               return (
-                <Text style={styles.botCardStatsLine}>
-                  {tr('statsLine', { games: stats.gamesPlayed, wins: stats.wins, losses: stats.losses, draws: stats.draws })}
+                <Text style={{ fontSize: 11, color: '#7c2d12', fontWeight: '700', marginTop: 4 }}>
+                  Статистика: Игр: {stats.gamesPlayed} · В:{stats.wins} П:{stats.losses} Н:{stats.draws}
                 </Text>
               );
             })()}
@@ -3137,7 +2694,7 @@ export default function App() {
                 handleStartBotGame(bot.id);
               }}
             >
-              <Text style={styles.botCardStartBtnText}>{tr('toBattle')}</Text>
+              <Text style={styles.botCardStartBtnText}>Начать с {bot.name}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -3153,7 +2710,7 @@ export default function App() {
 
     return (
       <SafeAreaView style={[styles.container, styles.appBg]}>
-        <StatusBar style={skin.statusBar === 'light' ? 'light' : 'dark'} />
+        <StatusBar style="dark" />
         <View style={styles.flex1}>
           <View style={[styles.botSelectTopBar, { paddingHorizontal: layout.padH }]}>
             <PageShell padH={0} maxWidth={layout.shellMax} style={styles.botSelectTopBarInner}>
@@ -3164,9 +2721,9 @@ export default function App() {
                   setScreen('lobby');
                 }}
                 accessibilityRole="button"
-                accessibilityLabel={tr('backToLobby')}
+                accessibilityLabel="Назад в лобби"
               >
-                <Text style={styles.botSelectBackBtnText}>← {tr('back')}</Text>
+                <Text style={styles.botSelectBackBtnText}>← Назад</Text>
               </TouchableOpacity>
               
               <View style={styles.botSelectTabs}>
@@ -3175,7 +2732,7 @@ export default function App() {
                   onPress={() => setBotSelectTab('tournament')}
                 >
                   <Text style={[styles.botSelectTabText, botSelectTab === 'tournament' && styles.botSelectTabTextActive]}>
-                    {tr('towerTab')}
+                    🏆 Башня
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -3183,7 +2740,7 @@ export default function App() {
                   onPress={() => setBotSelectTab('free')}
                 >
                   <Text style={[styles.botSelectTabText, botSelectTab === 'free' && styles.botSelectTabTextActive]}>
-                    {tr('freePlayTab')}
+                    🎲 Свободная игра
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -3204,22 +2761,24 @@ export default function App() {
                   {isCompleted ? (
                     <SurfaceCard style={[styles.tournamentWinCard, { marginBottom: 24 }]}>
                       <Text style={styles.tournamentWinEmoji}>👑</Text>
-                      <Text style={styles.tournamentWinTitle}>{tr('congrats')}</Text>
+                      <Text style={styles.tournamentWinTitle}>Поздравляем!</Text>
                       <Text style={styles.tournamentWinSubtitle}>
-                        {tr('towerComplete')}
+                        {user?.stats?.tournamentVersion === 2
+                          ? 'Вы прошли Башню испытаний и одолели всех ИИ-соперников от Ленивчика до Лосёнка!'
+                          : 'Вы прошли Башню испытаний и одолели всех ИИ-соперников от Зайчика до Капибарыша!'}
                       </Text>
                       <TouchableOpacity
                         style={styles.tournamentResetBtn}
                         onPress={handleResetTournament}
                       >
-                        <Text style={styles.tournamentResetBtnText}>{tr('restartTower')}</Text>
+                        <Text style={styles.tournamentResetBtnText}>Начать сначала</Text>
                       </TouchableOpacity>
                     </SurfaceCard>
                   ) : (
                     <View style={styles.tournamentIntro}>
-                      <Text style={styles.tournamentIntroTitle}>{tr('towerIntroTitle')}</Text>
+                      <Text style={styles.tournamentIntroTitle}>Пройдите испытание Башни</Text>
                       <Text style={styles.tournamentIntroSubtitle}>
-                        {tr('towerIntroDesc', { stage: currentStage + 1, total: TOURNAMENT_LADDER.length })}
+                        Побеждайте соперников одного за другим. Текущий этап: {currentStage + 1} из {TOURNAMENT_LADDER.length}
                       </Text>
                     </View>
                   )}
@@ -3242,7 +2801,7 @@ export default function App() {
                           ]}
                         >
                           <View style={styles.towerStepNumberCol}>
-                            <Text style={styles.towerStepNumber}>{tr('stageN', { n: index + 1 })}</Text>
+                            <Text style={styles.towerStepNumber}>Этап {index + 1}</Text>
                           </View>
                           
                           <View style={styles.towerStepBotAvatarCol}>
@@ -3254,16 +2813,16 @@ export default function App() {
 
                           <View style={styles.towerStepInfoCol}>
                             <Text style={[styles.towerStepBotName, isLocked && styles.textMuted]}>
-                              {botName(bot)}
+                              {bot?.name}
                             </Text>
                             <Text style={styles.towerStepDifficulty}>
-                              {isBeaten ? tr('beaten') : (bot?.tier ? tr(`diff_${bot.tier}`) : bot?.difficultyLabel)}
+                              {isBeaten ? '🏆 Побежден' : bot?.difficultyLabel}
                             </Text>
                             {(() => {
                               const stats = user?.botOpponentStats?.find(s => s.botId === botId) || { wins: 0, losses: 0, draws: 0, gamesPlayed: 0 };
                               return (
-                                <Text style={{ fontSize: 11, color: ui.textMuted, marginTop: 2 }}>
-                                  {tr('statsLine', { games: stats.gamesPlayed, wins: stats.wins, losses: stats.losses, draws: stats.draws })}
+                                <Text style={{ fontSize: 11, color: '#9a8a78', marginTop: 2 }}>
+                                  Игр: {stats.gamesPlayed} · В:{stats.wins} П:{stats.losses} Н:{stats.draws}
                                 </Text>
                               );
                             })()}
@@ -3280,7 +2839,7 @@ export default function App() {
                                 style={styles.towerChallengeBtn}
                                 onPress={() => handleChallengeTournamentBot(botId)}
                               >
-                                <Text style={styles.towerChallengeBtnText}>{tr('fight')}</Text>
+                                <Text style={styles.towerChallengeBtnText}>Бой</Text>
                               </TouchableOpacity>
                             )}
                             {isLocked && (
@@ -3296,19 +2855,19 @@ export default function App() {
                 <View>
                   <View style={styles.sectionHeader}>
                     <Text style={[styles.sectionTitle, layout.compact && styles.sectionTitleCompact]}>
-                      {tr('chooseOpponent')}
+                      Выберите оппонента
                     </Text>
                     <Text style={styles.sectionSubtitle}>
-                      {tr('botsCountHint', { count: listBots.length })}
+                      {listBots.length} ботов · нажмите карточку, затем начните партию
                     </Text>
                   </View>
 
-                  <View style={[styles.botGrid, isWeb ? styles.botGridWebThreeCol : styles.botGridMobile, { gap: layout.gap }]}>
+                  <View style={[styles.botGrid, isWeb && styles.botGridWebThreeCol, { gap: layout.gap }]}>
                     {isWeb ? (
                       <>
-                        {renderBotColumn(tr('easyBots'), easyBots)}
-                        {renderBotColumn(tr('mediumBots'), mediumBots)}
-                        {renderBotColumn(tr('hardBots'), hardBots)}
+                        {renderBotColumn('Лёгкие', easyBots)}
+                        {renderBotColumn('Средние', mediumBots)}
+                        {renderBotColumn('Сложные', hardBots)}
                       </>
                     ) : (
                       listBots.map(renderBotCard)
@@ -3331,10 +2890,10 @@ export default function App() {
     const isFinished = game.phase === GAME_CONFIG.PHASES.FINISHED;
     
     const setupStatus = game.setupPhase === GAME_CONFIG.SETUP_PHASES.FLAG
-      ? tr('setupFlag')
+      ? 'Расстановка: флаг 🏴'
       : game.setupPhase === GAME_CONFIG.SETUP_PHASES.TRAP
-        ? tr('setupTrap')
-        : tr('setupDone');
+        ? 'Расстановка: капкан 💥'
+        : 'Готовы к бою';
 
     const isMyTurn = gameMode === 'pvp' ? game.currentPlayer === pvpRole : game.currentPlayer === PLAYER;
     const isPlayerTurn = isPlaying && (gameMode === 'pvp' ? game.currentPlayer === pvpRole : game.currentPlayer === PLAYER);
@@ -3353,14 +2912,14 @@ export default function App() {
     const describeBattlePiece = (piece) => {
       const type = piece?.pieceType || piece?.type;
       const sym = PIECE_SYMBOLS[type] || '❓';
-      const label = ['rock', 'paper', 'scissors'].includes(type) ? tr(type) : pieceTypeLabel(type);
-      let who;
+      const label = pieceTypeLabel(type);
+      let who = 'Фигура';
       if (gameMode === 'pvp') {
         who = piece?.owner === 'p1'
-          ? (game.p1?.nickname || tr('playerN', { n: 1 }))
-          : (game.p2?.nickname || tr('playerN', { n: 2 }));
+          ? (game.p1?.nickname || 'Игрок 1')
+          : (game.p2?.nickname || 'Игрок 2');
       } else {
-        who = piece?.owner === PLAYER ? tr('you') : (botName(activeBot) || tr('bot'));
+        who = piece?.owner === PLAYER ? 'Вы' : (activeBot?.name || 'Бот');
       }
       return { who, sym, label };
     };
@@ -3479,28 +3038,11 @@ export default function App() {
                       borderStyle: flatStyle.borderStyle || (flatStyle.borderWidth ? 'solid' : undefined),
                       cursor: dragProps.draggable
                         ? 'grab'
-                        : (isPossibleMove || (isSetup && isSetupAllowed) ? 'pointer' : 'default'),
-                      position: 'relative'
+                        : (isPossibleMove || (isSetup && isSetupAllowed) ? 'pointer' : 'default')
                     };
                     
                     if (typeof normalizedStyle.borderWidth === 'number') {
                       normalizedStyle.borderWidth = `${normalizedStyle.borderWidth}px`;
-                    }
-
-                    // Для октагональных ячеек форма и цвета рисуются декорацией,
-                    // сам контейнер остаётся прозрачным
-                    const isOctagon = skin.cellShape === 'octagon';
-                    const octagonProps = isOctagon
-                      ? {
-                          backgroundColor: flatStyle.backgroundColor,
-                          borderColor: flatStyle.borderColor,
-                          borderWidth: flatStyle.borderWidth
-                        }
-                      : null;
-                    if (isOctagon) {
-                      normalizedStyle.backgroundColor = 'transparent';
-                      normalizedStyle.borderColor = 'transparent';
-                      normalizedStyle.boxShadow = 'none';
                     }
 
                     return (
@@ -3523,16 +3065,6 @@ export default function App() {
                         onDragOver={dropProps.onDragOver}
                         onDrop={dropProps.onDrop}
                       >
-                        {skin.cellShape !== 'square' && (
-                          <CellDecoration
-                            skin={skin}
-                            isDark={isDarkCell}
-                            variant={(ar * 7 + ac * 3) % 4}
-                            backgroundColor={octagonProps?.backgroundColor}
-                            borderColor={octagonProps?.borderColor}
-                            borderWidth={octagonProps?.borderWidth}
-                          />
-                        )}
                         {symbol && renderCartoonPiece(
                           isSetup ? (symbol === PIECE_SYMBOLS[FLAG] ? FLAG : TRAP) : (cell ? cell.type : FLAG),
                           cell ? cell.pieceType : null,
@@ -3572,9 +3104,6 @@ export default function App() {
                         }
                       }}
                     >
-                      {skin.cellShape !== 'square' && (
-                        <CellDecoration skin={skin} isDark={isDarkCell} variant={(ar * 7 + ac * 3) % 4} />
-                      )}
                       {symbol && renderCartoonPiece(
                         isSetup ? (symbol === PIECE_SYMBOLS[FLAG] ? FLAG : TRAP) : (cell ? cell.type : FLAG),
                         cell ? cell.pieceType : null,
@@ -3604,76 +3133,88 @@ export default function App() {
       </SurfaceCard>
     );
 
-    const setupReady = game.setupPhase === GAME_CONFIG.SETUP_PHASES.DONE;
-    const iconBtn = (emoji, label, onPress, variant = '', opts = {}) => (
-      <TouchableOpacity
-        style={[
-          styles.iconBtn,
-          variant === 'danger' && styles.iconBtnDanger,
-          variant === 'accent' && styles.iconBtnAccent,
-          variant === 'success' && styles.iconBtnSuccess,
-          opts.active && styles.iconBtnActive,
-          opts.disabled && styles.disabledBtn,
-          opts.grow && styles.iconBtnGrow
-        ]}
-        disabled={!!opts.disabled}
-        onPress={onPress}
-        accessibilityRole="button"
-        accessibilityLabel={label}
-      >
-        <Text style={styles.iconBtnEmoji}>{emoji}</Text>
-        <Text
-          style={[
-            styles.iconBtnLabel,
-            variant === 'danger' && styles.iconBtnLabelDanger,
-            variant === 'accent' && styles.iconBtnLabelAccent,
-            variant === 'success' && styles.iconBtnLabelSuccess
-          ]}
-          numberOfLines={1}
-        >
-          {label}
-        </Text>
-      </TouchableOpacity>
-    );
-
     const controlsBlock = (
       <View style={styles.gameControls}>
-        {(isSetup || isPlaying) && (
-          <View style={styles.iconBtnRow}>
-            {isSetup && iconBtn('🚪', tr('exit'), handleLeaveSetup, 'danger')}
-            {isSetup && iconBtn('🔄', tr('reset'), handleResetSetup, 'accent')}
-            {isSetup && iconBtn('⚔️', tr('startBattle'), handleStartBattle, 'success', {
-              disabled: !setupReady,
-              grow: true
-            })}
-            {isPlaying && iconBtn('🏳️', tr('surrender'), handleSurrender, 'danger')}
-            {iconBtn('📜', tr('battleLog'), () => setLogOpen((v) => !v), '', { active: logOpen })}
-            {iconBtn('⚙️', tr('settings'), () => setSettingsOpen(true))}
+        {isSetup && (
+          <View style={styles.setupControls}>
+            <TouchableOpacity style={styles.setupLeaveBtn} onPress={handleLeaveSetup}>
+              <Text style={styles.setupLeaveBtnText}>Выйти</Text>
+            </TouchableOpacity>
+            <View style={[styles.setupActionRow, layout.mobile && styles.setupActionRowStack]}>
+              <TouchableOpacity
+                style={[styles.setupResetBtn, layout.mobile && styles.setupBtnFullWidth]}
+                onPress={handleResetSetup}
+              >
+                <Text style={styles.setupResetBtnText}>Сбросить</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.setupStartBtn,
+                  layout.mobile && styles.setupBtnFullWidth,
+                  game.setupPhase !== GAME_CONFIG.SETUP_PHASES.DONE && styles.disabledBtn
+                ]}
+                disabled={game.setupPhase !== GAME_CONFIG.SETUP_PHASES.DONE}
+                onPress={handleStartBattle}
+              >
+                <Text style={styles.setupStartBtnText}>Начать бой</Text>
+              </TouchableOpacity>
+            </View>
           </View>
+        )}
+        {isPlaying && (
+          <TouchableOpacity style={styles.surrenderBtn} onPress={handleSurrender}>
+            <Text style={styles.surrenderBtnText}>Сдаться</Text>
+          </TouchableOpacity>
         )}
         {isFinished && (
           <SurfaceCard style={styles.finishedCard}>
             <Text style={styles.finishedTitle}>
               {setupNotStarted
-                ? `⏱️ ${tr('setupTimeout')}`
-                : ((gameMode === 'pvp' ? game.winner === pvpRole : game.winner === PLAYER)
-                    ? `🏆 ${tr('victory')}`
-                    : game.winner === 'draw'
-                      ? `🤝 ${tr('draw')}`
-                      : `💀 ${tr('defeat')}`)}
+                ? '⏱️ Партия не началась'
+                : (gameMode === 'pvp'
+                    ? (game.winner === pvpRole
+                        ? '🏆 Победа'
+                        : game.winner === 'draw'
+                          ? '🤝 Ничья'
+                          : '💀 Поражение')
+                    : (game.winner === PLAYER
+                        ? '🏆 Победа'
+                        : game.winner === 'draw'
+                          ? '🤝 Ничья'
+                          : '💀 Поражение'))}
             </Text>
             <Text style={styles.finishedBody}>
-              {{
-                setup_timeout: tr('setupTimeout'),
-                flag_captured: tr('reasonFlagCaptured'),
-                no_pieces: tr('reasonNoPieces'),
-                hopeless: tr('reasonHopeless'),
-                surrender: tr('reasonSurrender'),
-                no_moves: tr('reasonNoMoves'),
-                disconnect_timeout: tr('reasonDisconnectTimeout'),
-                turn_timeout: tr('reasonTurnTimeout'),
-                no_captures_draw: tr('reasonDrawNoCapture')
-              }[game.endReason] || ''}
+              {game.endReason === 'setup_timeout'
+                && 'Время на расстановку флага и капкана истекло (1 минута). Бой не был начат, рейтинг не изменился.'}
+              {game.endReason === 'flag_captured'
+                && (gameMode === 'pvp'
+                    ? (game.winner === pvpRole ? 'Вражеский флаг захвачен!' : 'Ваш флаг захвачен.')
+                    : 'Вражеский флаг захвачен.')}
+              {game.endReason === 'no_pieces'
+                && (gameMode === 'pvp'
+                    ? (game.winner === pvpRole ? 'Все боевые фигуры противника уничтожены.' : 'Все ваши боевые фигуры уничтожены.')
+                    : 'Все боевые фигуры противника уничтожены.')}
+              {game.endReason === 'hopeless'
+                && (gameMode === 'pvp'
+                    ? (game.winner === pvpRole ? 'Положение соперника безнадёжно.' : 'Ваше положение безнадёжно.')
+                    : 'Положение оппонента безнадёжно.')}
+              {game.endReason === 'surrender'
+                && (gameMode === 'pvp'
+                    ? (game.winner === pvpRole ? 'Соперник сдался.' : 'Вы признали поражение.')
+                    : 'Вы признали поражение.')}
+              {game.endReason === 'no_moves'
+                && (gameMode === 'pvp'
+                    ? (game.winner === pvpRole ? 'У соперника не осталось ходов.' : 'У вас не осталось ходов.')
+                    : 'У оппонента не осталось ходов.')}
+              {game.endReason === 'disconnect_timeout'
+                && (gameMode === 'pvp'
+                    ? (game.winner === pvpRole ? 'Соперник не переподключился.' : 'Вы не успели вернуться в игру.')
+                    : 'Соперник отключился и не вернулся в игру.')}
+              {game.endReason === 'turn_timeout'
+                && (gameMode === 'pvp'
+                    ? (game.winner === pvpRole ? 'У соперника истекло время хода.' : 'Время вашего хода истекло.')
+                    : 'Время хода истекло.')}
+              {game.endReason === 'no_captures_draw' && '20 ходов без взятий — объявлена ничья.'}
             </Text>
             {gameMode === 'pvp' && ratingUpdate !== null && (
               <Text style={[
@@ -3685,7 +3226,7 @@ export default function App() {
             )}
             {gameMode === 'pvp' && (
               <TouchableOpacity style={styles.rematchBtn} onPress={handleRematch}>
-                <Text style={styles.rematchBtnText}>⚔️⏳ {tr('rematch')}</Text>
+                <Text style={styles.rematchBtnText}>Реванш</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity
@@ -3708,7 +3249,7 @@ export default function App() {
               }}
             >
               <Text style={styles.lobbyReturnBtnText}>
-                {gameMode === 'pvp' ? tr('returnToArena') : (isTournamentActive ? tr('returnToTower') : tr('returnToLobby'))}
+                {gameMode === 'pvp' ? 'В арену' : (isTournamentActive ? 'В турнир' : 'В лобби')}
               </Text>
             </TouchableOpacity>
           </SurfaceCard>
@@ -3719,10 +3260,10 @@ export default function App() {
     const logsBlock = (
       <SurfaceCard style={[styles.logsSection, { padding: layout.cardPad }]}>
         <View style={styles.logsHeader}>
-          <Text style={styles.logsTitle}>{tr('battleLog')}</Text>
+          <Text style={styles.logsTitle}>Лог боя</Text>
           {isPlaying && (
             <Text style={styles.logsDrawMeta}>
-              {tr('drawMeta', { n: game.movesWithoutCapture || 0, limit: drawNoCaptureLimit })}
+              Ничья: {game.movesWithoutCapture || 0}/{drawNoCaptureLimit}
             </Text>
           )}
         </View>
@@ -3732,7 +3273,7 @@ export default function App() {
           nestedScrollEnabled
         >
           {battleLogs.length === 0 ? (
-            <Text style={styles.logLineMuted}>{tr('logsEmpty')}</Text>
+            <Text style={styles.logLineMuted}>События появятся здесь…</Text>
           ) : (
             battleLogs.map((log, idx) => (
               <Text key={idx} style={styles.logLine}>{log}</Text>
@@ -3744,7 +3285,7 @@ export default function App() {
 
     return (
       <SafeAreaView style={[styles.container, styles.appBg]}>
-        <StatusBar style={skin.statusBar === 'light' ? 'light' : 'dark'} />
+        <StatusBar style="dark" />
         <ScrollView
           style={styles.scrollFlex}
           contentContainerStyle={[
@@ -3757,25 +3298,24 @@ export default function App() {
             <View style={[styles.matchPanelsRow, layout.stackPanels && styles.matchPanelsRowStack]}>
               <OpponentPanel
                 army="blue"
-                compactAlways
-                name={gameMode === 'pvp' ? (pvpRole === 'p1' ? game.p1.nickname : game.p2.nickname) : (user?.nickname || tr('playerFallback'))}
-                subtitle={isSetup ? setupStatus : (gameMode === 'pvp' ? (pvpRole === 'p1' ? (game.p1.setupDone ? tr('setupDone') : tr('thinking')) : (game.p2.setupDone ? tr('setupDone') : tr('thinking'))) : null)}
+                name={gameMode === 'pvp' ? (pvpRole === 'p1' ? game.p1.nickname : game.p2.nickname) : (user?.nickname || 'Игрок')}
+                subtitle={isSetup ? setupStatus : (gameMode === 'pvp' ? (pvpRole === 'p1' ? (game.p1.setupDone ? 'Готов' : 'Выбирает...') : (game.p2.setupDone ? 'Готов' : 'Выбирает...')) : null)}
                 compact={layout.compact}
                 emoji="👤"
                 avatarUrl={gameMode === 'pvp' ? (pvpRole === 'p1' ? game.p1.avatarUrl : game.p2.avatarUrl) : user?.avatarUrl}
                 pieceCount={playerPieceCount}
                 turnLabel={
                   isSetup
-                    ? (gameMode === 'pvp' ? ((pvpRole === 'p1' ? game.p1.setupDone : game.p2.setupDone) ? tr('setupDone') : tr('thinking')) : `⏱ ${setupTimeLeft}s`)
+                    ? (gameMode === 'pvp' ? ((pvpRole === 'p1' ? game.p1.setupDone : game.p2.setupDone) ? 'Готов' : 'Выбирает...') : `Осталось ${setupTimeLeft} с`)
                     : isFinished
                       ? (setupNotStarted
-                        ? tr('setupTimeout')
+                        ? 'Время вышло'
                         : (game.winner === 'draw'
-                            ? tr('draw')
-                            : (game.winner === (gameMode === 'pvp' ? pvpRole : PLAYER) ? tr('victory') : tr('defeat'))))
+                            ? 'Ничья'
+                            : (game.winner === (gameMode === 'pvp' ? pvpRole : PLAYER) ? 'Победа' : 'Поражение')))
                       : isPlayerTurn
-                        ? tr('yourTurn')
-                        : tr('waiting')
+                        ? 'Ваш ход'
+                        : 'Ждёт'
                 }
                 isTurnActive={isSetup || isPlayerTurn}
                 fillPercent={isSetup ? setupFillPercent : turnFillPercent}
@@ -3783,23 +3323,22 @@ export default function App() {
               />
               <OpponentPanel
                 army="red"
-                compactAlways
-                name={gameMode === 'pvp' ? (pvpRole === 'p1' ? game.p2.nickname : game.p1.nickname) : (botName(activeBot) || tr('bot'))}
-                subtitle={gameMode === 'pvp' ? `${pvpRole === 'p1' ? game.p2.ratingMmr : game.p1.ratingMmr} MMR` : botDesc(activeBot)}
+                name={gameMode === 'pvp' ? (pvpRole === 'p1' ? game.p2.nickname : game.p1.nickname) : (activeBot?.name || 'Бот')}
+                subtitle={gameMode === 'pvp' ? `${pvpRole === 'p1' ? game.p2.ratingMmr : game.p1.ratingMmr} MMR` : activeBot?.algorithmLabel}
                 emoji={gameMode === 'pvp' ? '👤' : activeBot?.emoji}
                 avatarUrl={gameMode === 'pvp' ? (pvpRole === 'p1' ? game.p2.avatarUrl : game.p1.avatarUrl) : resolveAssetUrl(activeBot?.avatar)}
                 compact={layout.compact}
                 pieceCount={botPieceCount}
                 turnLabel={
                   isSetup
-                    ? (gameMode === 'pvp' ? ((pvpRole === 'p1' ? game.p2.setupDone : game.p1.setupDone) ? tr('setupDone') : tr('thinking')) : tr('waiting'))
+                    ? (gameMode === 'pvp' ? ((pvpRole === 'p1' ? game.p2.setupDone : game.p1.setupDone) ? 'Готов' : 'Выбирает...') : 'Ждёт')
                     : isFinished
                       ? (game.winner === 'draw'
-                          ? tr('draw')
-                          : (game.winner === (gameMode === 'pvp' ? (pvpRole === 'p1' ? 'p2' : 'p1') : COMPUTER) ? tr('victory') : tr('defeat')))
+                          ? 'Ничья'
+                          : (game.winner === (gameMode === 'pvp' ? (pvpRole === 'p1' ? 'p2' : 'p1') : COMPUTER) ? 'Победа' : 'Поражение'))
                       : isBotTurn
-                        ? tr('opponentTurn')
-                        : tr('waiting')
+                        ? 'Ходит'
+                        : 'Ждёт'
                 }
                 isTurnActive={isBotTurn}
                 fillPercent={turnFillPercent}
@@ -3820,11 +3359,9 @@ export default function App() {
                 {boardBlock}
                 {controlsBlock}
               </View>
-              {logOpen && (
-                <View style={[styles.gameSidebar, isGameWide && styles.gameSidebarWide]}>
-                  {logsBlock}
-                </View>
-              )}
+              <View style={[styles.gameSidebar, isGameWide && styles.gameSidebarWide]}>
+                {logsBlock}
+              </View>
             </View>
           </PageShell>
         </ScrollView>
@@ -3834,12 +3371,14 @@ export default function App() {
           <View style={[styles.modalOverlay, layout.mobile && styles.modalOverlayMobile]}>
             <View style={[styles.modalCard, layout.mobile && styles.modalCardMobile]}>
               <Text style={styles.modalTitle}>
-                {tr('tieRound', { n: battleBs.drawRound || 1 })}
+                Ничья · раунд {battleBs.drawRound || 1}
               </Text>
               <View style={styles.tieCountdownBadge}>
                 <Text style={styles.tieCountdownNumber}>{tieAttemptsRemaining}</Text>
                 <Text style={styles.tieCountdownLabel}>
-                  {tr('tieAttemptsLeft', { n: tieAttemptsRemaining })}
+                  {tieAttemptsRemaining === 1
+                    ? 'попытка до взаимоуничтожения'
+                    : 'попыток до взаимоуничтожения'}
                 </Text>
               </View>
 
@@ -3848,7 +3387,7 @@ export default function App() {
                 const def = describeBattlePiece(battleBs.defender);
                 return (
                   <View style={styles.tieCollisionBox}>
-                    <Text style={styles.tieCollisionTitle}>{tr('collision')}</Text>
+                    <Text style={styles.tieCollisionTitle}>Столкновение</Text>
                     <View style={styles.tieCollisionRow}>
                       <Text style={styles.tieCollisionPiece}>
                         {att.who}: {att.sym} {att.label}
@@ -3864,65 +3403,58 @@ export default function App() {
 
               {battleBs.lastRound && (
                 <View style={styles.tieLastRoundBox}>
-                  <Text style={styles.tieLastRoundTitle}>{tr('lastChoice')}</Text>
+                  <Text style={styles.tieLastRoundTitle}>Прошлый выбор</Text>
                   <Text style={styles.tieLastRoundText}>
                     {gameMode === 'pvp' && battleBs.lastRound.p1Choice && battleBs.lastRound.p2Choice
-                      ? tr('tieAgainShort', {
-                          a: PIECE_SYMBOLS[battleBs.lastRound.attackerChoice] || '?',
-                          b: PIECE_SYMBOLS[battleBs.lastRound.defenderChoice] || '?'
-                        })
+                      ? `${PIECE_SYMBOLS[battleBs.lastRound.attackerChoice] || '?'} vs ${PIECE_SYMBOLS[battleBs.lastRound.defenderChoice] || '?'} — снова ничья`
                       : (battleBs.lastRound.playerChoice && battleBs.lastRound.opponentChoice
-                          ? tr('youVsChoice', {
-                              mine: PIECE_SYMBOLS[battleBs.lastRound.playerChoice],
-                              opp: gameMode === 'pve' ? (botName(activeBot) || tr('bot')) : tr('opponent'),
-                              theirs: PIECE_SYMBOLS[battleBs.lastRound.opponentChoice]
-                            })
+                          ? `Вы: ${PIECE_SYMBOLS[battleBs.lastRound.playerChoice]} · ${gameMode === 'pve' ? (activeBot?.name || 'Бот') : 'Соперник'}: ${PIECE_SYMBOLS[battleBs.lastRound.opponentChoice]}`
                           : null)}
                   </Text>
-                  <Text style={styles.tieLastRoundHint}>{tr('chooseNewTypes')}</Text>
+                  <Text style={styles.tieLastRoundHint}>Выберите новые типы для обеих фигур</Text>
                 </View>
               )}
 
               {tieLastChance && (
                 <Text style={styles.tieLastChanceWarning}>
-                  {tr('mutualDestructWarning')}
+                  Если снова будет ничья, обе фигуры будут уничтожены.
                 </Text>
               )}
 
               {pvpWaitingOpponent ? (
                 <View style={{ alignItems: 'center', padding: 16 }}>
-                  <ActivityIndicator size="large" color={ui.accent} />
+                  <ActivityIndicator size="large" color="#c2410c" />
                   <Text style={[styles.modalSubtitle, { marginTop: 12, textAlign: 'center' }]}>
-                    {tr('waitingOpponentChoice')}
+                    Ожидание выбора соперника…
                   </Text>
                 </View>
               ) : (
                 <>
                   <Text style={styles.modalSubtitle}>
-                    {tr('chooseNewType')}
+                    Выберите новый тип фигуры для переигровки:
                   </Text>
                   <View style={[styles.choiceRow, layout.compact && styles.choiceRowStack]}>
-                    {['rock', 'paper', 'scissors'].map((type) => (
-                      <TouchableOpacity
-                        key={type}
-                        style={[styles.choiceBtn, layout.compact && styles.choiceBtnStack]}
-                        onPress={() => handleChoiceClick(type)}
-                        activeOpacity={0.85}
-                      >
-                        <View style={styles.choiceChipWrap}>
-                          {skin.assets?.[type] ? (
-                            <Image
-                              source={skin.assets[type]}
-                              style={styles.choiceImage}
-                              resizeMode="contain"
-                            />
-                          ) : (
-                            <Text style={styles.choiceEmoji}>{PIECE_SYMBOLS[type]}</Text>
-                          )}
-                        </View>
-                        <Text style={styles.choiceText}>{tr(type)}</Text>
-                      </TouchableOpacity>
-                    ))}
+                    <TouchableOpacity
+                      style={[styles.choiceBtn, layout.compact && styles.choiceBtnStack]}
+                      onPress={() => handleChoiceClick('rock')}
+                    >
+                      <Text style={styles.choiceEmoji}>🗿</Text>
+                      <Text style={styles.choiceText}>Камень</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.choiceBtn, layout.compact && styles.choiceBtnStack]}
+                      onPress={() => handleChoiceClick('paper')}
+                    >
+                      <Text style={styles.choiceEmoji}>📄</Text>
+                      <Text style={styles.choiceText}>Бумага</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.choiceBtn, layout.compact && styles.choiceBtnStack]}
+                      onPress={() => handleChoiceClick('scissors')}
+                    >
+                      <Text style={styles.choiceEmoji}>✂️</Text>
+                      <Text style={styles.choiceText}>Ножницы</Text>
+                    </TouchableOpacity>
                   </View>
                 </>
               )}
@@ -3934,19 +3466,21 @@ export default function App() {
         <Modal animationType="fade" transparent visible={surrenderModalVisible}>
           <View style={[styles.modalOverlay, layout.mobile && styles.modalOverlayMobile]}>
             <View style={[styles.modalCard, layout.mobile && styles.modalCardMobile]}>
-              <Text style={styles.modalTitle}>{tr('surrenderTitle')}</Text>
+              <Text style={styles.modalTitle}>Сдаться?</Text>
               <Text style={styles.modalSubtitle}>
-                {gameMode === 'pvp' ? tr('surrenderMmrBody') : tr('surrenderNoMmrBody')}
+                {gameMode === 'pvp'
+                  ? 'Партия будет засчитана как поражение (−25 MMR).'
+                  : 'Партия будет засчитана как поражение (рейтинг не изменится).'}
               </Text>
               <View style={styles.modalActionsRow}>
                 <TouchableOpacity
                   style={styles.modalCancelBtn}
                   onPress={() => setSurrenderModalVisible(false)}
                 >
-                  <Text style={styles.modalCancelBtnText}>{tr('cancel')}</Text>
+                  <Text style={styles.modalCancelBtnText}>Отмена</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.modalDangerBtn} onPress={confirmSurrender}>
-                  <Text style={styles.modalDangerBtnText}>{tr('yesSurrender')}</Text>
+                  <Text style={styles.modalDangerBtnText}>Да, сдаться</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -3956,25 +3490,24 @@ export default function App() {
         <Modal animationType="fade" transparent visible={leaveSetupModalVisible}>
           <View style={[styles.modalOverlay, layout.mobile && styles.modalOverlayMobile]}>
             <View style={[styles.modalCard, layout.mobile && styles.modalCardMobile]}>
-              <Text style={styles.modalTitle}>{tr('leaveSetupTitle')}</Text>
+              <Text style={styles.modalTitle}>Выйти из расстановки?</Text>
               <Text style={styles.modalSubtitle}>
-                {tr('leaveSetupBody')}
+                Партия ещё не началась. Вы вернётесь в лобби, расстановка не сохранится, рейтинг не изменится.
               </Text>
               <View style={styles.modalActionsRow}>
                 <TouchableOpacity
                   style={styles.modalCancelBtn}
                   onPress={() => setLeaveSetupModalVisible(false)}
                 >
-                  <Text style={styles.modalCancelBtnText}>{tr('stay')}</Text>
+                  <Text style={styles.modalCancelBtnText}>Остаться</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.modalDangerBtn} onPress={confirmLeaveSetup}>
-                  <Text style={styles.modalDangerBtnText}>{tr('exit')}</Text>
+                  <Text style={styles.modalDangerBtnText}>Выйти</Text>
                 </TouchableOpacity>
               </View>
             </View>
           </View>
         </Modal>
-        {settingsModal}
       </SafeAreaView>
     );
   }
@@ -3982,10 +3515,7 @@ export default function App() {
   return null;
 }
 
-function createStyles(skin) {
-  const u = skin.ui;
-  const hl = skin.highlights;
-  return StyleSheet.create({
+const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
@@ -3993,7 +3523,7 @@ function createStyles(skin) {
     flex: 1,
   },
   appBg: {
-    backgroundColor: u.bg,
+    backgroundColor: '#e8e2d8',
     ...(Platform.OS === 'web' ? { minHeight: '100vh' } : {}),
   },
   pageShell: {
@@ -4019,16 +3549,16 @@ function createStyles(skin) {
     flexGrow: 1,
   },
   surfaceCard: {
-    backgroundColor: u.surface,
+    backgroundColor: '#faf8f4',
     borderRadius: 16,
     padding: 20,
     marginBottom: LAYOUT.gap,
     borderWidth: 1,
-    borderColor: u.surfaceBorder,
+    borderColor: 'rgba(100, 75, 50, 0.1)',
     ...(Platform.OS === 'web'
       ? { boxShadow: '0 4px 24px rgba(44, 30, 16, 0.06)' }
       : {
-          shadowColor: u.textPrimary,
+          shadowColor: '#2c1e10',
           shadowOffset: { width: 0, height: 4 },
           shadowOpacity: 0.06,
           shadowRadius: 12,
@@ -4036,91 +3566,95 @@ function createStyles(skin) {
         }),
   },
   surfaceCardAccent: {
-    backgroundColor: u.accentSoftBg,
-    borderColor: u.surfaceBorder,
+    backgroundColor: 'rgba(194, 65, 12, 0.04)',
+    borderColor: 'rgba(194, 65, 12, 0.12)',
   },
   loadingCard: {
     alignItems: 'center',
     paddingVertical: 40,
   },
   loadingText: {
-    color: u.accentText,
+    color: '#9a3412',
     marginTop: 16,
     fontSize: 15,
     fontWeight: '600',
   },
   // --- Splash / Loading screen ---
-  brandBg: {
-    backgroundColor: BRAND_BG,
-  },
   splashWrap: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 32,
-    backgroundColor: BRAND_BG,
   },
-  splashLogoImg: {
-    width: 250,
-    height: 275,
+  splashLogoBadge: {
+    width: 112,
+    height: 112,
+    borderRadius: 32,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(100, 75, 50, 0.1)',
+    marginBottom: 20,
+    ...(Platform.OS === 'web'
+      ? { boxShadow: '0 12px 40px rgba(194, 65, 12, 0.18)' }
+      : {
+          shadowColor: '#c2410c',
+          shadowOffset: { width: 0, height: 10 },
+          shadowOpacity: 0.18,
+          shadowRadius: 20,
+          elevation: 8,
+        }),
+  },
+  splashLogoEmoji: {
+    fontSize: 34,
+    letterSpacing: -2,
+  },
+  splashTitle: {
+    fontSize: 34,
+    fontWeight: '900',
+    color: '#1c1917',
+    letterSpacing: 0.5,
+    textAlign: 'center',
+  },
+  splashTagline: {
+    marginTop: 6,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#8a7563',
+    textAlign: 'center',
   },
   splashBarTrack: {
-    marginTop: 30,
-    width: 240,
+    marginTop: 36,
+    width: 220,
     maxWidth: '80%',
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: 'rgba(124, 45, 18, 0.18)',
-    borderWidth: 1,
-    borderColor: 'rgba(124, 45, 18, 0.25)',
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(194, 65, 12, 0.12)',
     overflow: 'hidden',
   },
   splashBarFill: {
     position: 'absolute',
     top: 0,
     bottom: 0,
-    left: 0,
-    borderRadius: 5,
-    backgroundColor: '#f59e0b',
+    width: '36%',
+    borderRadius: 4,
+    backgroundColor: '#ea580c',
   },
   splashCaption: {
     marginTop: 14,
     fontSize: 13,
-    fontWeight: '700',
-    color: '#8a6a4a',
+    fontWeight: '600',
+    color: '#a8a29e',
   },
   // --- Auth screen ---
-  authScroll: {
-    flexGrow: 1,
+  authScreen: {
+    flex: 1,
     justifyContent: 'center',
     paddingVertical: 24,
   },
   authHero: {
     alignItems: 'center',
-    marginBottom: 14,
-  },
-  authLogo: {
-    width: 180,
-    height: 198,
-  },
-  authArtFrame: {
-    borderRadius: 24,
-    overflow: 'hidden',
-    marginBottom: 16,
-    borderWidth: 3,
-    borderColor: 'rgba(124, 45, 18, 0.25)',
-    ...(Platform.OS === 'web'
-      ? { boxShadow: '0 14px 40px rgba(124, 45, 18, 0.25)' }
-      : {
-          shadowColor: '#7c2d12',
-          shadowOffset: { width: 0, height: 10 },
-          shadowOpacity: 0.25,
-          shadowRadius: 20,
-          elevation: 8,
-        }),
-  },
-  authArtImg: {
-    width: '100%',
-    height: 190,
+    marginBottom: 24,
   },
   authCard: {
     alignItems: 'center',
@@ -4227,12 +3761,12 @@ function createStyles(skin) {
     alignItems: 'center',
   },
   profileTapHint: {
-    color: u.textMuted,
+    color: '#9a8a78',
     fontSize: 12,
     marginTop: 2,
   },
   profileChevron: {
-    color: u.textMuted,
+    color: '#9a8a78',
     fontSize: 14,
     marginLeft: 8,
     flexShrink: 0,
@@ -4241,33 +3775,33 @@ function createStyles(skin) {
     marginTop: 12,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: u.divider,
+    borderTopColor: 'rgba(100, 75, 50, 0.12)',
     gap: 8,
   },
   profileMenuItem: {
     paddingVertical: 12,
     paddingHorizontal: 14,
     borderRadius: 10,
-    backgroundColor: u.surfaceAlt,
+    backgroundColor: '#f5f0e8',
   },
   profileMenuItemText: {
-    color: u.textPrimary,
+    color: '#2c1e10',
     fontWeight: '700',
     fontSize: 15,
   },
   profileMenuItemDanger: {
-    backgroundColor: u.dangerSoftBg,
+    backgroundColor: 'rgba(220, 38, 38, 0.08)',
   },
   profileMenuItemDangerText: {
-    color: u.danger,
+    color: '#dc2626',
     fontWeight: '700',
     fontSize: 15,
   },
   profileScreenTopBar: {
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: u.divider,
-    backgroundColor: u.surfaceTranslucent,
+    borderBottomColor: 'rgba(100, 75, 50, 0.12)',
+    backgroundColor: 'rgba(250, 248, 244, 0.98)',
   },
   profileHero: {
     flexDirection: 'row',
@@ -4280,7 +3814,7 @@ function createStyles(skin) {
     borderRadius: 36,
   },
   profileHeroLetter: {
-    color: u.accentBright,
+    color: '#d97706',
     fontSize: 32,
     fontWeight: 'bold',
   },
@@ -4291,22 +3825,22 @@ function createStyles(skin) {
   profileHeroName: {
     fontSize: 22,
     fontWeight: '800',
-    color: u.textPrimary,
+    color: '#1c1917',
     marginBottom: 6,
   },
   profileHeroMeta: {
     fontSize: 13,
-    color: u.textSecondary,
+    color: '#6b5744',
     lineHeight: 20,
   },
   profileSectionHint: {
     fontSize: 13,
-    color: u.textMuted,
+    color: '#78716c',
     marginBottom: 14,
   },
   profileEmptyBots: {
     fontSize: 14,
-    color: u.textMuted,
+    color: '#9a8a78',
     lineHeight: 21,
     fontStyle: 'italic',
   },
@@ -4315,7 +3849,7 @@ function createStyles(skin) {
     alignItems: 'flex-start',
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: u.surfaceAltBorder,
+    borderBottomColor: 'rgba(100, 75, 50, 0.08)',
     gap: 12,
   },
   botStatEmoji: {
@@ -4330,7 +3864,7 @@ function createStyles(skin) {
   botStatName: {
     fontSize: 16,
     fontWeight: '800',
-    color: u.textPrimary,
+    color: '#1c1917',
     marginBottom: 4,
   },
   botStatCounts: {
@@ -4339,18 +3873,18 @@ function createStyles(skin) {
   },
   botStatMeta: {
     fontSize: 12,
-    color: u.textMuted,
+    color: '#9a8a78',
     marginTop: 4,
   },
   profileLogoutBtn: {
-    backgroundColor: u.danger,
+    backgroundColor: '#dc2626',
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
     marginBottom: 8,
   },
   profileLogoutBtnText: {
-    color: u.onAccent,
+    color: '#fff',
     fontWeight: '800',
     fontSize: 15,
   },
@@ -4358,13 +3892,13 @@ function createStyles(skin) {
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 8,
-    backgroundColor: u.dangerSoftBg,
+    backgroundColor: '#fee2e2',
     borderWidth: 1,
-    borderColor: u.danger,
+    borderColor: '#fca5a5',
     alignSelf: 'center',
   },
   lobbyLogoutBtnText: {
-    color: u.danger,
+    color: '#b91c1c',
     fontSize: 13,
     fontWeight: '800',
   },
@@ -4389,7 +3923,7 @@ function createStyles(skin) {
   sectionTitle: {
     fontSize: 22,
     fontWeight: '800',
-    color: u.textPrimary,
+    color: '#1c1917',
     marginBottom: 4,
   },
   sectionTitleCompact: {
@@ -4397,7 +3931,7 @@ function createStyles(skin) {
   },
   sectionSubtitle: {
     fontSize: 14,
-    color: u.textMuted,
+    color: '#78716c',
   },
   profileRow: {
     flexDirection: 'row',
@@ -4410,9 +3944,9 @@ function createStyles(skin) {
     marginRight: 15,
   },
   avatarPlaceholder: {
-    backgroundColor: u.surface,
+    backgroundColor: '#faf7f2',
     borderWidth: 1,
-    borderColor: u.divider,
+    borderColor: 'rgba(180, 160, 130, 0.25)',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 15,
@@ -4421,7 +3955,7 @@ function createStyles(skin) {
     borderRadius: 25,
   },
   avatarLetter: {
-    color: u.accentBright,
+    color: '#d97706',
     fontSize: 22,
     fontWeight: 'bold',
   },
@@ -4432,30 +3966,30 @@ function createStyles(skin) {
     marginRight: 4,
   },
   nickname: {
-    color: u.textPrimary, // Dark brown
+    color: '#2c1e10', // Dark brown
     fontSize: 18,
     fontWeight: 'bold',
   },
   roleText: {
-    color: u.textSecondary,
+    color: '#6b5744',
     fontSize: 13,
     marginTop: 2,
   },
   logoutBtn: {
     flexShrink: 0,
-    borderColor: u.danger,
+    borderColor: '#dc2626',
     borderWidth: 1.5,
     paddingVertical: 6,
     paddingHorizontal: 16,
     borderRadius: 8,
   },
   logoutText: {
-    color: u.danger,
+    color: '#dc2626',
     fontWeight: 'bold',
     fontSize: 13,
   },
   cardTitle: {
-    color: u.title, // Gold title
+    color: '#b45309', // Gold title
     fontSize: 16,
     fontWeight: '700',
     marginBottom: 15,
@@ -4466,7 +4000,7 @@ function createStyles(skin) {
     marginVertical: 10,
   },
   ratingValue: {
-    color: u.accentBright,
+    color: '#d97706',
     fontSize: 48,
     fontWeight: '800',
     marginRight: 10,
@@ -4475,13 +4009,13 @@ function createStyles(skin) {
     fontSize: 36,
   },
   ratingLabel: {
-    color: u.textSecondary,
+    color: '#6b5744',
     fontSize: 16,
     fontWeight: '600',
   },
   statsDivider: {
     height: 1,
-    backgroundColor: u.divider,
+    backgroundColor: 'rgba(180, 160, 130, 0.25)',
     marginVertical: 15,
   },
   winLossGrid: {
@@ -4494,43 +4028,43 @@ function createStyles(skin) {
   gridValue: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: u.textPrimary,
+    color: '#2c1e10',
   },
   gridLabel: {
-    color: u.textMuted,
+    color: '#9a8a78',
     fontSize: 12,
     marginTop: 4,
   },
-  greenText: { color: u.success },
-  redText: { color: u.danger },
-  grayText: { color: u.textMuted },
-  yellowText: { color: u.accentBright },
+  greenText: { color: '#16a34a' },
+  redText: { color: '#dc2626' },
+  grayText: { color: '#9a8a78' },
+  yellowText: { color: '#d97706' },
   actionBtn: {
-    backgroundColor: u.accent,
+    backgroundColor: '#d97706',
     paddingVertical: 12,
     borderRadius: 10,
     alignItems: 'center',
     marginBottom: 12,
   },
   disabledBtn: {
-    backgroundColor: u.surfaceAlt,
+    backgroundColor: '#e5ded4',
     opacity: 0.6,
   },
   disabledText: {
-    color: u.textMuted,
+    color: '#9a8a78',
   },
   primaryBtnOutline: {
     backgroundColor: 'transparent',
-    borderColor: u.accent,
+    borderColor: '#c2410c',
     borderWidth: 2,
   },
   primaryBtnOutlineText: {
-    color: u.accent,
+    color: '#c2410c',
     fontWeight: '700',
     fontSize: 16,
   },
   actionBtnText: {
-    color: u.onAccent,
+    color: '#fff',
     fontWeight: '700',
     fontSize: 16,
   },
@@ -4538,21 +4072,27 @@ function createStyles(skin) {
   modeTileHero: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: u.heroBg,
+    backgroundColor: '#ea580c',
     borderRadius: 18,
-    borderWidth: 2,
-    borderColor: u.heroBorder,
     paddingVertical: 18,
     paddingHorizontal: 18,
     marginBottom: 12,
     gap: 14,
-    ...u.cardGlow,
+    ...(Platform.OS === 'web'
+      ? { boxShadow: '0 8px 22px rgba(234, 88, 12, 0.32)' }
+      : {
+          shadowColor: '#ea580c',
+          shadowOffset: { width: 0, height: 6 },
+          shadowOpacity: 0.3,
+          shadowRadius: 12,
+          elevation: 6,
+        }),
   },
   modeTileBody: {
     flex: 1,
   },
   modeTileHeroTitle: {
-    color: u.onAccent,
+    color: '#fff',
     fontSize: 18,
     fontWeight: '900',
   },
@@ -4573,10 +4113,10 @@ function createStyles(skin) {
   },
   modeTile: {
     flex: 1,
-    backgroundColor: u.surface,
+    backgroundColor: '#fff',
     borderRadius: 18,
     borderWidth: 1.5,
-    borderColor: u.surfaceBorder,
+    borderColor: 'rgba(194, 65, 12, 0.18)',
     paddingVertical: 16,
     paddingHorizontal: 12,
     alignItems: 'center',
@@ -4586,25 +4126,25 @@ function createStyles(skin) {
   },
   modeTileTitle: {
     marginTop: 6,
-    color: u.textPrimary,
+    color: '#1c1917',
     fontSize: 15,
     fontWeight: '800',
   },
   modeTileDesc: {
     marginTop: 2,
-    color: u.textMuted,
+    color: '#8a7563',
     fontSize: 11.5,
     fontWeight: '600',
     textAlign: 'center',
   },
   infoTitle: {
-    color: u.title,
+    color: '#b45309',
     fontSize: 16,
     fontWeight: '700',
     marginBottom: 8,
   },
   infoBody: {
-    color: u.textSecondary,
+    color: '#6b5744',
     fontSize: 14,
     lineHeight: 22,
   },
@@ -4618,11 +4158,11 @@ function createStyles(skin) {
     flex: 1,
     minWidth: 140,
     maxWidth: 220,
-    backgroundColor: u.accentSoftBg,
+    backgroundColor: '#fff7ed',
     borderRadius: 12,
     padding: 12,
     borderWidth: 1,
-    borderColor: u.surfaceBorder,
+    borderColor: 'rgba(194, 65, 12, 0.2)',
     alignItems: 'center',
   },
   quickOpponentAvatar: {
@@ -4633,24 +4173,24 @@ function createStyles(skin) {
   },
   quickOpponentName: {
     fontWeight: '800',
-    color: u.textPrimary,
+    color: '#2c1e10',
     fontSize: 14,
     textAlign: 'center',
   },
   quickOpponentMeta: {
-    color: u.textSecondary,
+    color: '#6b5744',
     fontSize: 11,
     marginTop: 4,
     textAlign: 'center',
   },
   quickOpponentGames: {
-    color: u.textMuted,
+    color: '#9a8a78',
     fontSize: 10,
     marginTop: 2,
   },
   quickOpponentPlay: {
     marginTop: 8,
-    color: u.accent,
+    color: '#c2410c',
     fontWeight: '700',
     fontSize: 12,
   },
@@ -4661,34 +4201,34 @@ function createStyles(skin) {
     paddingVertical: 10,
     paddingHorizontal: 20,
     borderRadius: 12,
-    backgroundColor: u.accentSoftBg,
+    backgroundColor: 'rgba(194, 65, 12, 0.1)',
     borderWidth: 1,
-    borderColor: u.surfaceBorder,
+    borderColor: 'rgba(194, 65, 12, 0.25)',
   },
   tieCountdownNumber: {
     fontSize: 36,
     fontWeight: '900',
-    color: u.accent,
+    color: '#c2410c',
     lineHeight: 40,
   },
   tieCountdownLabel: {
     fontSize: 12,
-    color: u.textSecondary,
+    color: '#6b5744',
     textAlign: 'center',
     marginTop: 2,
   },
   tieCollisionBox: {
-    backgroundColor: u.surface,
+    backgroundColor: '#faf8f4',
     borderRadius: 10,
     padding: 12,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: u.divider,
+    borderColor: 'rgba(100, 75, 50, 0.12)',
   },
   tieCollisionTitle: {
     fontSize: 12,
     fontWeight: '700',
-    color: u.textSecondary,
+    color: '#6b5744',
     marginBottom: 8,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -4703,15 +4243,15 @@ function createStyles(skin) {
   tieCollisionPiece: {
     fontSize: 15,
     fontWeight: '700',
-    color: u.textPrimary,
+    color: '#2c1e10',
     flexShrink: 1,
   },
   tieCollisionVs: {
     fontSize: 18,
-    color: u.textMuted,
+    color: '#9a8a78',
   },
   tieLastRoundBox: {
-    backgroundColor: u.surfaceAlt,
+    backgroundColor: '#f5f0e8',
     borderRadius: 8,
     padding: 10,
     marginBottom: 10,
@@ -4719,22 +4259,22 @@ function createStyles(skin) {
   tieLastRoundTitle: {
     fontSize: 11,
     fontWeight: '700',
-    color: u.textSecondary,
+    color: '#6b5744',
     marginBottom: 4,
   },
   tieLastRoundText: {
     fontSize: 14,
-    color: u.textPrimary,
+    color: '#2c1e10',
     fontWeight: '600',
   },
   tieLastRoundHint: {
     fontSize: 11,
-    color: u.textMuted,
+    color: '#9a8a78',
     marginTop: 4,
   },
   tieLastChanceWarning: {
     fontSize: 12,
-    color: u.danger,
+    color: '#dc2626',
     textAlign: 'center',
     marginBottom: 12,
     lineHeight: 18,
@@ -4758,7 +4298,7 @@ function createStyles(skin) {
   botColumnTitle: {
     fontSize: 13,
     fontWeight: '800',
-    color: u.textSecondary,
+    color: '#6b5744',
     textAlign: 'center',
     marginBottom: 4,
     textTransform: 'uppercase',
@@ -4770,45 +4310,31 @@ function createStyles(skin) {
     justifyContent: 'space-between',
   },
   botCard: {
-    backgroundColor: u.surface,
+    backgroundColor: '#faf8f4',
     borderRadius: 12,
-    padding: 10,
+    padding: 12,
     borderWidth: 1.5,
-    borderColor: u.surfaceAltBorder,
+    borderColor: 'rgba(100, 75, 50, 0.08)',
     marginBottom: 0,
   },
   botCardWeb: {
     width: '100%',
     marginBottom: 0,
   },
-  botCardMobile: {
-    width: '48%',
-  },
-  botGridMobile: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-  },
-  botCardStatsLine: {
-    fontSize: 10,
-    color: u.title,
-    fontWeight: '700',
-    marginTop: 4,
-  },
   botCardWide: {
     width: '48%',
     maxWidth: 480,
   },
   botCardAvatar: {
-    width: 34,
-    height: 34,
-    borderRadius: 9,
-    marginRight: 8,
-    backgroundColor: u.surfaceAlt,
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    marginRight: 10,
+    backgroundColor: '#e7e5e4',
   },
   botModelAuthor: {
     fontSize: 11,
-    color: u.textMuted,
+    color: '#9a8a78',
     marginTop: 6,
     fontStyle: 'italic',
   },
@@ -4817,36 +4343,36 @@ function createStyles(skin) {
     height: 40,
     borderRadius: 10,
     marginRight: 12,
-    backgroundColor: u.surfaceAlt,
+    backgroundColor: '#e7e5e4',
   },
   botCardFullWidth: {
     width: '100%',
   },
   botCardSelected: {
     borderWidth: 2.5,
-    borderColor: u.accent,
+    borderColor: '#c2410c',
   },
   botCardBody: {
     width: '100%',
   },
   botCardStartBtn: {
-    marginTop: 10,
-    backgroundColor: u.accent,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
+    marginTop: 12,
+    backgroundColor: '#c2410c',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     borderRadius: 10,
     alignItems: 'center',
   },
   botCardStartBtnText: {
-    color: u.onAccent,
+    color: '#FFFFFF',
     fontWeight: '800',
-    fontSize: 13,
+    fontSize: 15,
   },
   botSelectTopBar: {
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: u.divider,
-    backgroundColor: u.surfaceTranslucent,
+    borderBottomColor: 'rgba(100, 75, 50, 0.12)',
+    backgroundColor: 'rgba(250, 248, 244, 0.98)',
     zIndex: 20,
     ...(Platform.OS === 'web'
       ? { position: 'sticky', top: 0, backdropFilter: 'blur(8px)' }
@@ -4864,17 +4390,17 @@ function createStyles(skin) {
     paddingVertical: 8,
     paddingHorizontal: 14,
     borderRadius: 10,
-    backgroundColor: u.surfaceAlt,
+    backgroundColor: '#e7e5e4',
   },
   botSelectBackBtnText: {
-    color: u.textSecondary,
+    color: '#44403c',
     fontWeight: '700',
     fontSize: 15,
   },
   stickyFooter: {
     borderTopWidth: 1,
-    borderTopColor: u.divider,
-    backgroundColor: u.surfaceTranslucent,
+    borderTopColor: 'rgba(100, 75, 50, 0.12)',
+    backgroundColor: 'rgba(250, 248, 244, 0.95)',
     paddingVertical: 14,
     ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)' } : {}),
   },
@@ -4903,12 +4429,12 @@ function createStyles(skin) {
     flex: 1,
   },
   botName: {
-    color: u.textPrimary,
-    fontSize: 14,
+    color: '#2c1e10',
+    fontSize: 18,
     fontWeight: 'bold',
   },
   botAlgorithm: {
-    color: u.textMuted,
+    color: '#9a8a78',
     fontSize: 11,
     marginTop: 2,
   },
@@ -4917,18 +4443,18 @@ function createStyles(skin) {
     paddingVertical: 4,
     borderRadius: 6,
   },
-  tierEasy: { backgroundColor: u.successSoftBg },
-  tierMedium: { backgroundColor: u.warningSoftBg },
-  tierHard: { backgroundColor: u.dangerSoftBg },
+  tierEasy: { backgroundColor: 'rgba(22, 163, 74, 0.15)' },
+  tierMedium: { backgroundColor: 'rgba(217, 119, 6, 0.15)' },
+  tierHard: { backgroundColor: 'rgba(239, 68, 68, 0.15)' },
   tierText: {
     fontSize: 11,
     fontWeight: 'bold',
-    color: u.textPrimary,
+    color: '#2c1e10',
   },
   botDescription: {
-    color: u.textSecondary,
-    fontSize: 12,
-    lineHeight: 16,
+    color: '#6b5744',
+    fontSize: 13,
+    lineHeight: 18,
     marginBottom: 12,
   },
   botFooter: {
@@ -4939,14 +4465,14 @@ function createStyles(skin) {
     marginRight: 'auto',
   },
   tagBadge: {
-    backgroundColor: u.surfaceAlt,
+    backgroundColor: '#e5ded4',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
     marginLeft: 6,
   },
   tagText: {
-    color: u.textSecondary,
+    color: '#6b5744',
     fontSize: 10,
     fontWeight: '600',
   },
@@ -4956,23 +4482,23 @@ function createStyles(skin) {
     paddingVertical: 14,
     alignItems: 'center',
     borderRadius: 12,
-    backgroundColor: u.surfaceAlt,
+    backgroundColor: '#e7e5e4',
     marginRight: 12,
   },
   backBtnText: {
-    color: u.textSecondary,
+    color: '#6b5744',
     fontWeight: 'bold',
     fontSize: 16,
   },
   startBtn: {
     flex: 2,
-    backgroundColor: u.accent,
+    backgroundColor: '#c2410c',
     paddingVertical: 14,
     alignItems: 'center',
     borderRadius: 12,
   },
   startBtnText: {
-    color: u.onAccent,
+    color: '#FFFFFF',
     fontWeight: 'bold',
     fontSize: 16,
   },
@@ -5009,14 +4535,14 @@ function createStyles(skin) {
     borderRadius: 14,
     borderWidth: 2,
     overflow: 'hidden',
-    backgroundColor: u.surface,
+    backgroundColor: '#faf8f4',
     position: 'relative',
   },
   panelBlue: {
-    borderColor: u.blueSoft,
+    borderColor: 'rgba(37, 99, 235, 0.25)',
   },
   panelRed: {
-    borderColor: u.redSoft,
+    borderColor: 'rgba(220, 38, 38, 0.25)',
   },
   panelTurnActive: {
     ...(Platform.OS === 'web'
@@ -5030,10 +4556,10 @@ function createStyles(skin) {
         }),
   },
   panelUrgentBlue: {
-    borderColor: u.blueSide,
+    borderColor: 'rgba(37, 99, 235, 0.85)',
   },
   panelUrgentRed: {
-    borderColor: u.redSide,
+    borderColor: 'rgba(220, 38, 38, 0.85)',
   },
   turnFillBar: {
     position: 'absolute',
@@ -5043,20 +4569,20 @@ function createStyles(skin) {
     zIndex: 0,
   },
   turnFillBlue: {
-    backgroundColor: u.blueSoft,
+    backgroundColor: 'rgba(37, 99, 235, 0.32)',
   },
   turnFillRed: {
-    backgroundColor: u.redSoft,
+    backgroundColor: 'rgba(220, 38, 38, 0.32)',
   },
   drawCountdown: {
     marginBottom: 14,
     paddingVertical: 10,
     paddingHorizontal: 14,
     borderRadius: 12,
-    backgroundColor: u.surfaceAlt,
+    backgroundColor: '#eef2ff',
     borderWidth: 2,
-    borderColor: u.purple,
-    shadowColor: u.purple,
+    borderColor: '#6366f1',
+    shadowColor: '#4f46e5',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.12,
     shadowRadius: 6,
@@ -5068,8 +4594,8 @@ function createStyles(skin) {
     paddingHorizontal: 10,
   },
   drawCountdownDanger: {
-    borderColor: u.danger,
-    backgroundColor: u.dangerSoftBg,
+    borderColor: 'rgba(239, 68, 68, 0.55)',
+    backgroundColor: 'rgba(254, 242, 242, 0.95)',
   },
   drawCountdownHeader: {
     flexDirection: 'row',
@@ -5081,7 +4607,7 @@ function createStyles(skin) {
   drawCountdownTitle: {
     fontSize: 13,
     fontWeight: '700',
-    color: u.textSecondary,
+    color: '#312e81',
   },
   drawCountdownTitleCompact: {
     fontSize: 12,
@@ -5089,25 +4615,25 @@ function createStyles(skin) {
   drawCountdownMeta: {
     fontSize: 13,
     fontWeight: '700',
-    color: u.textPrimary,
+    color: '#1e293b',
   },
   drawCountdownMetaDanger: {
-    color: u.danger,
+    color: '#b91c1c',
   },
   drawCountdownTrack: {
     width: '100%',
     height: 10,
     borderRadius: 999,
-    backgroundColor: u.divider,
+    backgroundColor: 'rgba(148, 163, 184, 0.28)',
     overflow: 'hidden',
   },
   drawCountdownFill: {
     height: '100%',
     borderRadius: 999,
-    backgroundColor: u.success,
+    backgroundColor: '#22c55e',
   },
   drawCountdownFillWarn: {
-    backgroundColor: u.warning,
+    backgroundColor: '#f59e0b',
   },
   drawCountdownFillDanger: {
     backgroundColor: '#ef4444',
@@ -5115,11 +4641,11 @@ function createStyles(skin) {
   drawCountdownHint: {
     marginTop: 8,
     fontSize: 12,
-    color: u.title,
+    color: '#b45309',
     fontWeight: '500',
   },
   drawCountdownHintDanger: {
-    color: u.danger,
+    color: '#b91c1c',
     fontWeight: '700',
   },
   panelInner: {
@@ -5151,7 +4677,7 @@ function createStyles(skin) {
     alignItems: 'center',
   },
   panelAvatarRed: {
-    backgroundColor: u.dangerSoftBg,
+    backgroundColor: '#fee2e2',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -5168,14 +4694,14 @@ function createStyles(skin) {
   panelName: {
     fontSize: 16,
     fontWeight: '800',
-    color: u.textPrimary,
+    color: '#1c1917',
   },
   panelNameCompact: {
     fontSize: 13,
   },
   panelSubtitle: {
     fontSize: 11,
-    color: u.textMuted,
+    color: '#78716c',
     marginTop: 2,
   },
   panelSubtitleCompact: {
@@ -5183,7 +4709,7 @@ function createStyles(skin) {
   },
   panelMeta: {
     fontSize: 12,
-    color: u.textSecondary,
+    color: '#57534e',
     marginTop: 4,
   },
   panelMetaCompact: {
@@ -5193,7 +4719,7 @@ function createStyles(skin) {
   panelTurnLabel: {
     fontSize: 13,
     fontWeight: '600',
-    color: u.textMuted,
+    color: '#a8a29e',
     marginTop: 4,
   },
   panelTurnLabelCompact: {
@@ -5201,7 +4727,7 @@ function createStyles(skin) {
     marginTop: 2,
   },
   panelTurnLabelActive: {
-    color: u.textPrimary,
+    color: '#1c1917',
     fontWeight: '800',
   },
   boardCard: {
@@ -5213,10 +4739,12 @@ function createStyles(skin) {
     width: '100%',
     alignSelf: 'center',
     aspectRatio: 8 / 6,
+    backgroundColor: '#d4b980',
     borderRadius: 12,
     padding: 8,
+    borderWidth: 3,
+    borderColor: '#8b6914',
     gap: 3,
-    ...skin.boardFrame,
   },
   row: {
     flex: 1,
@@ -5226,27 +4754,27 @@ function createStyles(skin) {
   cell: {
     flex: 1,
     aspectRatio: 1,
-    borderRadius: skin.cellShape === 'octagon' ? 2 : 5,
+    borderRadius: 5,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'transparent',
+    borderColor: 'rgba(80, 55, 30, 0.18)',
   },
   setupZoneLight: {
-    backgroundColor: hl.setupZoneBg,
-    borderColor: hl.setupZoneBorder,
+    backgroundColor: 'rgba(22, 163, 74, 0.18)',
+    borderColor: 'rgba(22, 163, 74, 0.55)',
     borderWidth: 2,
   },
   setupZoneDark: {
-    backgroundColor: hl.setupZoneBg,
-    borderColor: hl.setupZoneBorder,
+    backgroundColor: 'rgba(22, 163, 74, 0.26)',
+    borderColor: 'rgba(22, 163, 74, 0.6)',
     borderWidth: 2,
   },
   setupZoneHover: {
-    backgroundColor: hl.setupHoverBg,
-    borderColor: hl.setupHoverBorder,
+    backgroundColor: 'rgba(22, 163, 74, 0.38)',
+    borderColor: 'rgba(22, 163, 74, 0.85)',
     ...(Platform.OS === 'web'
-      ? { boxShadow: `0 0 12px ${hl.setupHoverBorder}` }
+      ? { boxShadow: '0 0 12px rgba(22, 163, 74, 0.35)' }
       : {}),
   },
   setupZoneForbidden: {
@@ -5259,97 +4787,35 @@ function createStyles(skin) {
     cursor: 'not-allowed',
   },
   selectedCell: {
-    borderColor: hl.selectedBorder,
-    borderWidth: 2,
-    ...(Platform.OS === 'web' ? { boxShadow: `0 0 10px ${hl.selectedBorder}` } : {}),
+    borderColor: '#d97706',
   },
   possibleMoveCell: {
-    borderColor: hl.possibleBorder,
-    backgroundColor: hl.possibleBg,
+    borderColor: '#16a34a',
+    backgroundColor: 'rgba(22, 163, 74, 0.1)',
   },
   validMoveDot: {
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: hl.dot,
-    ...(Platform.OS === 'web' ? { boxShadow: `0 0 8px ${hl.dot}` } : {}),
+    backgroundColor: '#16a34a',
   },
   
   gameControls: {
     marginBottom: LAYOUT.gap,
   },
-  iconBtnRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'stretch',
-    gap: 10,
-    flexWrap: 'wrap',
-  },
-  iconBtn: {
-    minWidth: 66,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: u.surfaceAlt,
-    borderColor: u.surfaceAltBorder,
-  },
-  iconBtnGrow: {
-    flexGrow: 1,
-    maxWidth: 220,
-  },
-  iconBtnActive: {
-    borderColor: u.accentBright,
-    ...(Platform.OS === 'web' ? { boxShadow: `0 0 10px ${u.accentSoftBg}` } : {}),
-  },
-  iconBtnEmoji: {
-    fontSize: 22,
-    lineHeight: 26,
-  },
-  iconBtnLabel: {
-    fontSize: 10,
-    fontWeight: '800',
-    marginTop: 2,
-    color: u.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  iconBtnDanger: {
-    backgroundColor: u.dangerSoftBg,
-    borderColor: u.danger,
-  },
-  iconBtnLabelDanger: {
-    color: u.danger,
-  },
-  iconBtnAccent: {
-    backgroundColor: u.accentSoftBg,
-    borderColor: u.accent,
-  },
-  iconBtnLabelAccent: {
-    color: u.accentText,
-  },
-  iconBtnSuccess: {
-    backgroundColor: u.successSoftBg,
-    borderColor: u.success,
-  },
-  iconBtnLabelSuccess: {
-    color: u.success,
-  },
   setupControls: {
     gap: 10,
   },
   setupLeaveBtn: {
-    backgroundColor: u.surfaceAlt,
+    backgroundColor: '#f5f0e8',
     paddingVertical: 12,
     alignItems: 'center',
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: u.inputBorder,
+    borderColor: '#c9b8a0',
   },
   setupLeaveBtnText: {
-    color: u.textSecondary,
+    color: '#6b5744',
     fontWeight: 'bold',
     fontSize: 15,
   },
@@ -5368,7 +4834,7 @@ function createStyles(skin) {
   },
   setupResetBtn: {
     flexShrink: 0,
-    backgroundColor: u.surfaceAlt,
+    backgroundColor: '#e5ded4',
     paddingVertical: 12,
     paddingHorizontal: 16,
     alignItems: 'center',
@@ -5377,7 +4843,7 @@ function createStyles(skin) {
     minWidth: 108,
   },
   setupResetBtnText: {
-    color: u.textSecondary,
+    color: '#6b5744',
     fontWeight: 'bold',
     fontSize: 15,
   },
@@ -5385,7 +4851,7 @@ function createStyles(skin) {
     flex: 1,
     flexGrow: 1,
     minWidth: 0,
-    backgroundColor: u.success,
+    backgroundColor: '#16a34a',
     paddingVertical: 12,
     paddingHorizontal: 14,
     alignItems: 'center',
@@ -5393,19 +4859,19 @@ function createStyles(skin) {
     borderRadius: 8,
   },
   setupStartBtnText: {
-    color: u.onAccent,
+    color: '#FFFFFF',
     fontWeight: 'bold',
     fontSize: 15,
     textAlign: 'center',
   },
   surrenderBtn: {
-    backgroundColor: u.danger,
+    backgroundColor: '#dc2626',
     paddingVertical: 12,
     alignItems: 'center',
     borderRadius: 8,
   },
   surrenderBtnText: {
-    color: u.onAccent,
+    color: '#FFFFFF',
     fontWeight: 'bold',
     fontSize: 15,
   },
@@ -5417,11 +4883,11 @@ function createStyles(skin) {
   finishedTitle: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: u.textPrimary,
+    color: '#2c1e10',
     marginBottom: 8,
   },
   finishedBody: {
-    color: u.textSecondary,
+    color: '#6b5744',
     fontSize: 14,
     textAlign: 'center',
     marginBottom: 10,
@@ -5436,23 +4902,23 @@ function createStyles(skin) {
     paddingVertical: 12,
     paddingHorizontal: 20,
     borderRadius: 10,
-    backgroundColor: u.success,
+    backgroundColor: '#0d9488',
     alignItems: 'center',
     alignSelf: 'stretch'
   },
   rematchBtnText: {
-    color: u.onAccent,
+    color: '#fff',
     fontWeight: '800',
     fontSize: 15
   },
   lobbyReturnBtn: {
-    backgroundColor: u.accent,
+    backgroundColor: '#d97706',
     paddingVertical: 10,
     paddingHorizontal: 24,
     borderRadius: 8,
   },
   lobbyReturnBtnText: {
-    color: u.onAccent,
+    color: '#FFFFFF',
     fontWeight: 'bold',
   },
   
@@ -5469,14 +4935,14 @@ function createStyles(skin) {
     marginBottom: 10,
   },
   logsTitle: {
-    color: u.textPrimary,
+    color: '#1c1917',
     fontSize: 14,
     fontWeight: '800',
   },
   logsDrawMeta: {
     fontSize: 12,
     fontWeight: '700',
-    color: u.purple,
+    color: '#4f46e5',
   },
   logsList: {
     maxHeight: Platform.OS === 'web' ? 420 : 260,
@@ -5485,13 +4951,13 @@ function createStyles(skin) {
     maxHeight: 200,
   },
   logLine: {
-    color: u.textSecondary,
+    color: '#57534e',
     fontSize: 12,
     lineHeight: 18,
     marginBottom: 6,
   },
   logLineMuted: {
-    color: u.textMuted,
+    color: '#a8a29e',
     fontSize: 13,
     fontStyle: 'italic',
   },
@@ -5499,7 +4965,7 @@ function createStyles(skin) {
   // Modal choice for Tie-Breaker
   modalOverlay: {
     flex: 1,
-    backgroundColor: u.overlay,
+    backgroundColor: 'rgba(44, 30, 16, 0.6)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
@@ -5511,12 +4977,12 @@ function createStyles(skin) {
   modalCard: {
     width: '100%',
     maxWidth: 340,
-    backgroundColor: u.surface,
+    backgroundColor: '#faf7f2',
     borderRadius: 16,
     padding: 24,
     alignItems: 'center',
     borderWidth: 1.5,
-    borderColor: u.accentBright,
+    borderColor: '#d97706',
   },
   modalCardMobile: {
     maxWidth: '100%',
@@ -5527,11 +4993,11 @@ function createStyles(skin) {
   modalTitle: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: u.accentBright,
+    color: '#d97706',
     marginBottom: 8,
   },
   modalSubtitle: {
-    color: u.textSecondary,
+    color: '#6b5744',
     fontSize: 14,
     textAlign: 'center',
     marginBottom: 24,
@@ -5546,49 +5012,31 @@ function createStyles(skin) {
   choiceRowStack: {
     flexDirection: 'column',
     alignItems: 'stretch',
-    gap: 10,
   },
   choiceBtn: {
-    flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: u.surfaceAlt,
-    borderWidth: 1.5,
-    borderColor: u.surfaceBorder,
-    borderRadius: 14,
-    paddingVertical: 10,
-    paddingHorizontal: 6,
+    backgroundColor: '#e5ded4',
+    padding: 12,
+    borderRadius: 10,
+    flex: 1,
   },
   choiceBtnStack: {
     flex: 0,
     flexDirection: 'row',
-    justifyContent: 'flex-start',
-    gap: 14,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    width: '100%',
-  },
-  choiceChipWrap: {
-    width: 46,
-    height: 46,
-    borderRadius: 12,
-    overflow: 'hidden',
-    alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(127, 127, 127, 0.12)',
-    flexShrink: 0,
+    gap: 10,
+    paddingVertical: 14,
+    width: '100%',
+    borderWidth: 1.5,
+    borderColor: 'rgba(180, 160, 130, 0.25)',
   },
   choiceEmoji: {
-    fontSize: 30,
-  },
-  choiceImage: {
-    width: 40,
-    height: 40,
+    fontSize: 32,
+    marginBottom: 6,
   },
   choiceText: {
-    color: u.textPrimary,
-    fontSize: 13,
+    color: '#2c1e10',
+    fontSize: 11,
     fontWeight: 'bold',
   },
   modalActionsRow: {
@@ -5601,11 +5049,11 @@ function createStyles(skin) {
     flex: 1,
     paddingVertical: 12,
     borderRadius: 10,
-    backgroundColor: u.surfaceAlt,
+    backgroundColor: '#e7e5e4',
     alignItems: 'center',
   },
   modalCancelBtnText: {
-    color: u.textSecondary,
+    color: '#44403c',
     fontWeight: '700',
     fontSize: 15,
   },
@@ -5613,162 +5061,22 @@ function createStyles(skin) {
     flex: 1,
     paddingVertical: 12,
     borderRadius: 10,
-    backgroundColor: u.danger,
+    backgroundColor: '#dc2626',
     alignItems: 'center',
   },
   modalDangerBtnText: {
-    color: u.onAccent,
+    color: '#fff',
     fontWeight: '700',
     fontSize: 15,
-  },
-  settingsCard: {
-    maxWidth: 440,
-    alignItems: 'stretch',
-  },
-  settingsScroll: {
-    alignSelf: 'stretch',
-    maxHeight: 440,
-  },
-  settingsSectionTitle: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: u.title,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    marginTop: 16,
-    marginBottom: 10,
-  },
-  skinRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  skinOption: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 6,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    backgroundColor: u.surfaceAlt,
-    borderColor: u.surfaceAltBorder,
-  },
-  skinOptionActive: {
-    borderColor: u.accentBright,
-    backgroundColor: u.accentSoftBg,
-    ...(Platform.OS === 'web' ? { boxShadow: `0 0 12px ${u.accentSoftBg}` } : {}),
-  },
-  skinOptionIcon: {
-    fontSize: 26,
-  },
-  skinOptionLabel: {
-    marginTop: 6,
-    fontSize: 11,
-    fontWeight: '700',
-    color: u.textSecondary,
-    textAlign: 'center',
-  },
-  skinOptionLabelActive: {
-    color: u.textPrimary,
-  },
-  langGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  langChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1.5,
-    backgroundColor: u.surfaceAlt,
-    borderColor: u.surfaceAltBorder,
-  },
-  langChipActive: {
-    borderColor: u.accentBright,
-    backgroundColor: u.accentSoftBg,
-  },
-  langChipText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: u.textSecondary,
-  },
-  langChipTextActive: {
-    color: u.textPrimary,
-  },
-  audioRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: u.divider,
-  },
-  audioRowLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: u.textPrimary,
-  },
-  togglePill: {
-    width: 46,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: u.surfaceAlt,
-    borderWidth: 1.5,
-    borderColor: u.surfaceAltBorder,
-    justifyContent: 'center',
-    paddingHorizontal: 2,
-  },
-  togglePillOn: {
-    backgroundColor: u.accentSoftBg,
-    borderColor: u.accentBright,
-  },
-  toggleKnob: {
-    width: 19,
-    height: 19,
-    borderRadius: 10,
-    backgroundColor: u.textMuted,
-    alignSelf: 'flex-start',
-  },
-  toggleKnobOn: {
-    backgroundColor: u.accentBright,
-    alignSelf: 'flex-end',
-    ...(Platform.OS === 'web' ? { boxShadow: `0 0 8px ${u.accentBright}` } : {}),
-  },
-  settingsCloseBtn: {
-    marginTop: 16,
-    paddingVertical: 12,
-    borderRadius: 10,
-    alignItems: 'center',
-    backgroundColor: u.accentSoftBg,
-    borderWidth: 1.5,
-    borderColor: u.accent,
-  },
-  settingsCloseBtnText: {
-    color: u.accentText,
-    fontWeight: '800',
-    fontSize: 15,
-  },
-  headerIconBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: u.surfaceAlt,
-    borderWidth: 1.5,
-    borderColor: u.surfaceAltBorder,
-  },
-  headerIconBtnText: {
-    fontSize: 18,
   },
   lastMoveFromCell: {
-    backgroundColor: hl.lastFromBg,
-    borderColor: hl.lastFromBorder,
+    backgroundColor: 'rgba(217, 119, 6, 0.15)',
+    borderColor: 'rgba(217, 119, 6, 0.4)',
     borderWidth: 1.5,
   },
   lastMoveToCell: {
-    backgroundColor: hl.lastToBg,
-    borderColor: hl.lastToBorder,
+    backgroundColor: 'rgba(217, 119, 6, 0.3)',
+    borderColor: '#d97706',
     borderWidth: 2,
   },
   arenaStatRow: {
@@ -5778,23 +5086,23 @@ function createStyles(skin) {
     marginTop: 14
   },
   arenaStatPill: {
-    backgroundColor: u.surface,
+    backgroundColor: '#faf8f4',
     borderRadius: 12,
     paddingVertical: 10,
     paddingHorizontal: 16,
     borderWidth: 1,
-    borderColor: u.divider,
+    borderColor: 'rgba(180, 160, 130, 0.2)',
     alignItems: 'center',
     minWidth: 88
   },
   arenaStatPillValue: {
     fontSize: 20,
     fontWeight: '800',
-    color: u.accent
+    color: '#c2410c'
   },
   arenaStatPillLabel: {
     fontSize: 11,
-    color: u.textSecondary,
+    color: '#6b5744',
     marginTop: 2,
     fontWeight: '600'
   },
@@ -5802,7 +5110,7 @@ function createStyles(skin) {
     alignItems: 'center'
   },
   arenaStatusText: {
-    color: u.textPrimary,
+    color: '#2c1e10',
     fontSize: 14,
     fontWeight: '600',
     textAlign: 'center',
@@ -5814,7 +5122,7 @@ function createStyles(skin) {
     paddingHorizontal: 12
   },
   arenaLinkBtnText: {
-    color: u.accent,
+    color: '#c2410c',
     fontWeight: '700',
     fontSize: 14
   },
@@ -5830,17 +5138,17 @@ function createStyles(skin) {
   },
   arenaModeTile: {
     flex: 1,
-    backgroundColor: u.surface,
+    backgroundColor: '#faf8f4',
     borderRadius: 14,
     paddingVertical: 16,
     paddingHorizontal: 12,
     alignItems: 'center',
     borderWidth: 1.5,
-    borderColor: u.surfaceBorder
+    borderColor: 'rgba(100, 75, 50, 0.1)'
   },
   arenaModeTileHero: {
-    backgroundColor: u.accentSoftBg,
-    borderColor: u.accentBright,
+    backgroundColor: '#fff7ed',
+    borderColor: '#d97706',
     paddingVertical: 20
   },
   arenaModeTileDisabled: {
@@ -5853,12 +5161,12 @@ function createStyles(skin) {
   arenaModeTitle: {
     fontSize: 15,
     fontWeight: '800',
-    color: u.textPrimary,
+    color: '#2c1e10',
     textAlign: 'center'
   },
   arenaModeDesc: {
     fontSize: 12,
-    color: u.textSecondary,
+    color: '#6b5744',
     marginTop: 4,
     textAlign: 'center'
   },
@@ -5874,11 +5182,11 @@ function createStyles(skin) {
   arenaWaitingTitle: {
     fontSize: 15,
     fontWeight: '800',
-    color: u.textPrimary
+    color: '#2c1e10'
   },
   arenaWaitingDesc: {
     fontSize: 13,
-    color: u.textSecondary,
+    color: '#6b5744',
     marginTop: 4,
     lineHeight: 18
   },
@@ -5887,11 +5195,11 @@ function createStyles(skin) {
     paddingVertical: 8,
     borderRadius: 8,
     borderWidth: 1.5,
-    borderColor: u.inputBorder,
+    borderColor: '#c9b8a0',
     flexShrink: 0
   },
   arenaWaitingCancelText: {
-    color: u.textSecondary,
+    color: '#6b5744',
     fontWeight: '700',
     fontSize: 13
   },
@@ -5906,13 +5214,13 @@ function createStyles(skin) {
   },
   arenaCodeInput: {
     borderWidth: 1,
-    borderColor: u.inputBorder,
+    borderColor: '#c9b8a0',
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 16,
-    backgroundColor: u.inputBg,
-    color: u.inputText,
+    backgroundColor: '#fff',
+    color: '#2c1e10',
     letterSpacing: 2
   },
   arenaCodeInputFlex: {
@@ -5923,7 +5231,7 @@ function createStyles(skin) {
     width: '100%'
   },
   arenaCodeBtn: {
-    backgroundColor: u.accent,
+    backgroundColor: '#d97706',
     paddingHorizontal: 20,
     paddingVertical: 12,
     borderRadius: 10,
@@ -5934,7 +5242,7 @@ function createStyles(skin) {
     alignSelf: 'flex-start'
   },
   arenaCodeBtnText: {
-    color: u.onAccent,
+    color: '#fff',
     fontWeight: '700',
     fontSize: 15
   },
@@ -5942,11 +5250,11 @@ function createStyles(skin) {
     paddingVertical: 20,
     paddingHorizontal: 12,
     borderRadius: 12,
-    backgroundColor: u.surface,
+    backgroundColor: '#faf8f4',
     alignItems: 'center'
   },
   arenaEmptyText: {
-    color: u.textMuted,
+    color: '#9a8a78',
     fontSize: 14,
     fontStyle: 'italic'
   },
@@ -5957,9 +5265,9 @@ function createStyles(skin) {
     padding: 12,
     marginBottom: 8,
     borderRadius: 12,
-    backgroundColor: u.surface,
+    backgroundColor: '#faf8f4',
     borderWidth: 1,
-    borderColor: u.surfaceAltBorder
+    borderColor: 'rgba(100, 75, 50, 0.08)'
   },
   arenaRoomCardInfo: {
     flex: 1,
@@ -5967,23 +5275,23 @@ function createStyles(skin) {
   },
   arenaRoomName: {
     fontSize: 15,
-    color: u.textPrimary,
+    color: '#2c1e10',
     fontWeight: '700'
   },
   arenaRoomMeta: {
     fontSize: 12,
-    color: u.textSecondary,
+    color: '#6b5744',
     marginTop: 2
   },
   arenaJoinBtn: {
-    backgroundColor: u.success,
+    backgroundColor: '#0d9488',
     paddingHorizontal: 14,
     paddingVertical: 9,
     borderRadius: 8,
     flexShrink: 0
   },
   arenaJoinBtnText: {
-    color: u.onAccent,
+    color: '#fff',
     fontWeight: '700',
     fontSize: 13
   },
@@ -5994,9 +5302,9 @@ function createStyles(skin) {
     padding: 12,
     marginBottom: 8,
     borderRadius: 12,
-    backgroundColor: u.surface,
+    backgroundColor: '#faf8f4',
     borderWidth: 1,
-    borderColor: u.surfaceAltBorder
+    borderColor: 'rgba(100, 75, 50, 0.08)'
   },
   arenaPlayerAvatar: {
     width: 40,
@@ -6011,61 +5319,61 @@ function createStyles(skin) {
   arenaPlayerName: {
     fontSize: 15,
     fontWeight: '700',
-    color: u.textPrimary
+    color: '#2c1e10'
   },
   arenaPlayerRating: {
     fontSize: 12,
-    color: u.textSecondary,
+    color: '#6b5744',
     marginTop: 2
   },
   arenaBusyBadge: {
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
-    backgroundColor: u.surfaceAlt
+    backgroundColor: '#f5f5f4'
   },
   arenaBusyLabel: {
     fontSize: 12,
-    color: u.textMuted,
+    color: '#78716c',
     fontWeight: '600'
   },
   arenaChallengeBtn: {
-    backgroundColor: u.accent,
+    backgroundColor: '#c2410c',
     paddingHorizontal: 14,
     paddingVertical: 9,
     borderRadius: 8,
     flexShrink: 0
   },
   arenaChallengeBtnText: {
-    color: u.onAccent,
+    color: '#fff',
     fontWeight: '700',
     fontSize: 13
   },
   
   // --- Tournament (Challenge Tower) Styles ---
   tournamentBtn: {
-    backgroundColor: u.accent,
+    backgroundColor: '#c2410c',
     paddingVertical: 12,
     borderRadius: 10,
     alignItems: 'center',
     marginBottom: 12,
   },
   tournamentBtnText: {
-    color: u.onAccent,
+    color: '#fff',
     fontWeight: '800',
     fontSize: 16,
   },
   tournamentHeaderTitle: {
     fontSize: 18,
     fontWeight: '800',
-    color: u.textPrimary,
+    color: '#2c1e10',
     marginLeft: 12,
   },
   tournamentWinCard: {
     padding: 24,
     alignItems: 'center',
-    backgroundColor: u.warningSoftBg,
-    borderColor: u.warning,
+    backgroundColor: '#fffbeb',
+    borderColor: '#f59e0b',
     borderWidth: 2,
     borderRadius: 16,
   },
@@ -6076,24 +5384,24 @@ function createStyles(skin) {
   tournamentWinTitle: {
     fontSize: 22,
     fontWeight: '850',
-    color: u.title,
+    color: '#78350f',
     marginBottom: 8,
   },
   tournamentWinSubtitle: {
     fontSize: 14,
-    color: u.textSecondary,
+    color: '#92400e',
     textAlign: 'center',
     lineHeight: 20,
     marginBottom: 20,
   },
   tournamentResetBtn: {
-    backgroundColor: u.accent,
+    backgroundColor: '#d97706',
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 10,
   },
   tournamentResetBtnText: {
-    color: u.onAccent,
+    color: '#fff',
     fontWeight: '700',
     fontSize: 15,
   },
@@ -6104,12 +5412,12 @@ function createStyles(skin) {
   tournamentIntroTitle: {
     fontSize: 20,
     fontWeight: '800',
-    color: u.textPrimary,
+    color: '#2c1e10',
     marginBottom: 4,
   },
   tournamentIntroSubtitle: {
     fontSize: 13,
-    color: u.textSecondary,
+    color: '#6b5744',
   },
   towerLadderContainer: {
     gap: 12,
@@ -6118,29 +5426,29 @@ function createStyles(skin) {
   towerStep: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: u.surface,
+    backgroundColor: '#faf8f4',
     padding: 14,
     borderRadius: 14,
     borderWidth: 1.5,
-    borderColor: u.surfaceAltBorder,
+    borderColor: 'rgba(100, 75, 50, 0.08)',
   },
   towerStepCurrent: {
-    borderColor: u.accent,
-    backgroundColor: u.accentSoftBg,
-    shadowColor: u.accent,
+    borderColor: '#c2410c',
+    backgroundColor: '#fff7ed',
+    shadowColor: '#c2410c',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 6,
     elevation: 3,
   },
   towerStepBeaten: {
-    backgroundColor: u.successSoftBg,
-    borderColor: u.success,
+    backgroundColor: '#f0fdf4',
+    borderColor: '#bbf7d0',
   },
   towerStepLocked: {
     opacity: 0.6,
-    backgroundColor: u.surfaceAlt,
-    borderColor: u.surfaceAltBorder,
+    backgroundColor: '#f5f5f4',
+    borderColor: '#e5e5e0',
   },
   towerStepNumberCol: {
     width: 65,
@@ -6148,7 +5456,7 @@ function createStyles(skin) {
   towerStepNumber: {
     fontSize: 12,
     fontWeight: '800',
-    color: u.title,
+    color: '#7c2d12',
     textTransform: 'uppercase',
   },
   towerStepBotAvatarCol: {
@@ -6158,7 +5466,7 @@ function createStyles(skin) {
     width: 44,
     height: 44,
     borderRadius: 10,
-    backgroundColor: u.surfaceAlt,
+    backgroundColor: '#e7e5e4',
   },
   towerStepAvatarPlaceholder: {
     width: 44,
@@ -6168,7 +5476,7 @@ function createStyles(skin) {
     justifyContent: 'center',
   },
   towerStepAvatarLocked: {
-    backgroundColor: u.surfaceAlt,
+    backgroundColor: '#d6d3d1',
   },
   towerStepLockEmoji: {
     fontSize: 18,
@@ -6179,11 +5487,11 @@ function createStyles(skin) {
   towerStepBotName: {
     fontSize: 15,
     fontWeight: '700',
-    color: u.textPrimary,
+    color: '#2c1e10',
   },
   towerStepDifficulty: {
     fontSize: 12,
-    color: u.textSecondary,
+    color: '#6b5744',
     marginTop: 2,
   },
   towerStepActionCol: {
@@ -6191,7 +5499,7 @@ function createStyles(skin) {
     alignItems: 'flex-end',
   },
   beatenBadge: {
-    backgroundColor: u.success,
+    backgroundColor: '#22c55e',
     width: 26,
     height: 26,
     borderRadius: 13,
@@ -6199,18 +5507,18 @@ function createStyles(skin) {
     justifyContent: 'center',
   },
   beatenBadgeText: {
-    color: u.onAccent,
+    color: '#fff',
     fontWeight: '800',
     fontSize: 14,
   },
   towerChallengeBtn: {
-    backgroundColor: u.accent,
+    backgroundColor: '#c2410c',
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 8,
   },
   towerChallengeBtnText: {
-    color: u.onAccent,
+    color: '#fff',
     fontWeight: '700',
     fontSize: 13,
   },
@@ -6218,13 +5526,13 @@ function createStyles(skin) {
     fontSize: 16,
   },
   textMuted: {
-    color: u.textMuted,
+    color: '#78716c',
   },
   
   // --- Bot Select Segmented Tabs ---
   botSelectTabs: {
     flexDirection: 'row',
-    backgroundColor: u.surfaceAlt,
+    backgroundColor: '#e7e5e4',
     borderRadius: 8,
     padding: 3,
   },
@@ -6234,7 +5542,7 @@ function createStyles(skin) {
     borderRadius: 6,
   },
   botSelectTabActive: {
-    backgroundColor: u.surface,
+    backgroundColor: '#fff',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
@@ -6244,31 +5552,31 @@ function createStyles(skin) {
   botSelectTabText: {
     fontSize: 12,
     fontWeight: '700',
-    color: u.textSecondary,
+    color: '#57534e',
   },
   botSelectTabTextActive: {
-    color: u.accent,
+    color: '#c2410c',
   },
   // Bot card difficulty styles
   botCardEasy: {
-    backgroundColor: u.successSoftBg,
-    borderColor: u.success,
+    backgroundColor: '#f0fdf4',
+    borderColor: '#bbf7d0',
   },
   botCardMedium: {
-    backgroundColor: u.warningSoftBg,
-    borderColor: u.warning,
+    backgroundColor: '#fefce8',
+    borderColor: '#fef08a',
   },
   botCardHard: {
-    backgroundColor: u.dangerSoftBg,
-    borderColor: u.danger,
+    backgroundColor: '#fef2f2',
+    borderColor: '#fecaca',
   },
 
   // Board cartoon/animated skin cells
   cartoonLightCell: {
-    ...skin.cells.light,
+    backgroundColor: '#FFF9C4', // Soft cream/yellow
   },
   cartoonDarkCell: {
-    ...skin.cells.dark,
+    backgroundColor: '#C8E6C9', // Soft pastel green
   },
 
   cartoonPieceBadge: {
@@ -6294,7 +5602,7 @@ function createStyles(skin) {
     borderColor: '#1d4ed8', // Darker blue border for player
   },
   cartoonEnemyBadge: {
-    borderColor: u.danger, // Darker red border for enemy
+    borderColor: '#b91c1c', // Darker red border for enemy
   },
   cartoonImmobilizedBadge: {
     opacity: 0.5,
@@ -6343,9 +5651,8 @@ function createStyles(skin) {
     zIndex: 3,
   },
   cartoonPieceMiniLabelText: {
-    color: u.onAccent,
+    color: '#ffffff',
     fontSize: 9,
     fontWeight: '900',
   }
 });
-}
