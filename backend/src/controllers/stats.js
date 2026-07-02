@@ -1,4 +1,7 @@
+import jwt from 'jsonwebtoken';
 import prisma from '../models/db.js';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'rps_jwt_secret_key_random_2026_medium';
 
 const RATING_WIN = 25;
 const RATING_LOSE = -25;
@@ -209,5 +212,50 @@ export async function resetTournament(req, res) {
     res.json({ success: true, stats: updatedStats });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+}
+
+export async function updateNickname(req, res) {
+  try {
+    const { nickname } = req.body;
+    if (!nickname || typeof nickname !== 'string') {
+      return res.status(400).json({ code: 'NICKNAME_REQUIRED', error: 'Nickname is required and must be a string' });
+    }
+
+    const trimmedNickname = nickname.trim();
+    if (trimmedNickname.length < 2 || trimmedNickname.length > 32) {
+      return res.status(400).json({ code: 'NICKNAME_LENGTH', error: 'Nickname length must be between 2 and 32 characters' });
+    }
+
+    // Allow alphanumeric, spaces, underscores, hyphens, and cyrillic
+    const nicknameRegex = /^[a-zA-Z0-9_а-яА-ЯёЁ\s\-]+$/;
+    if (!nicknameRegex.test(trimmedNickname)) {
+      return res.status(400).json({ code: 'NICKNAME_INVALID', error: 'Nickname contains invalid characters' });
+    }
+
+    // Check uniqueness
+    const existingUser = await prisma.user.findUnique({
+      where: { nickname: trimmedNickname }
+    });
+
+    if (existingUser && existingUser.id !== req.user.id) {
+      return res.status(400).json({ code: 'NICKNAME_TAKEN', error: 'This nickname is already taken' });
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: req.user.id },
+      data: { nickname: trimmedNickname }
+    });
+
+    const payload = { id: updatedUser.id, nickname: updatedUser.nickname, role: updatedUser.role };
+    const newToken = jwt.sign(payload, JWT_SECRET, { expiresIn: '1h' });
+
+    res.json({
+      success: true,
+      nickname: updatedUser.nickname,
+      token: newToken
+    });
+  } catch (error) {
+    res.status(500).json({ code: 'NICKNAME_SAVE_FAILED', error: error.message });
   }
 }

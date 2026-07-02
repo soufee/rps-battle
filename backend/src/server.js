@@ -29,7 +29,7 @@ import {
   authGuest,
   mintToken
 } from './controllers/auth.js';
-import { updateStats, getProfile, resetTournament } from './controllers/stats.js';
+import { updateStats, getProfile, resetTournament, updateNickname } from './controllers/stats.js';
 
 import prisma from './models/db.js';
 import { initSocket } from './socket/gameManager.js';
@@ -72,6 +72,7 @@ app.get('/api/v2/auth/status', authenticateToken, status);
 app.post('/api/v2/auth/mint-token', mintToken);
 
 app.get('/api/v2/profile', authenticateToken, getProfile);
+app.post('/api/v2/profile/update-nickname', authenticateToken, updateNickname);
 app.post('/api/v2/stats/update', authenticateToken, updateStats);
 app.post('/api/v2/stats/reset-tournament', authenticateToken, resetTournament);
 

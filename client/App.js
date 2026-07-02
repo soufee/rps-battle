@@ -825,6 +825,12 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [error, setError] = useState(null);
 
+  // Nickname settings state
+  const [nicknameInput, setNicknameInput] = useState('');
+  const [isSavingNickname, setIsSavingNickname] = useState(false);
+  const [nicknameError, setNicknameError] = useState(null);
+  const [nicknameSuccess, setNicknameSuccess] = useState(null);
+
   // Прогресс сплэша: только вперёд, бар не откатывается назад
   const bumpProgress = (value, caption) => {
     setLoadProgress((prev) => Math.max(prev, value));
@@ -877,6 +883,14 @@ export default function App() {
   const socketRef = useRef(null);
   const pvpRoleRef = useRef(null);
   const refreshPromiseRef = useRef(null);
+
+  useEffect(() => {
+    if (user && user.nickname) {
+      setNicknameInput(user.nickname);
+      setNicknameError(null);
+      setNicknameSuccess(null);
+    }
+  }, [user]);
 
   // Фоновая музыка: лобби-эмбиент вне боя, боевой эмбиент в матче
   const bgmTypeRef = useRef(null);
@@ -1807,6 +1821,94 @@ export default function App() {
       }
     } catch (err) {
       console.error('Не удалось сбросить прогресс турнира:', err);
+    }
+  };
+
+  const handleSaveNickname = async () => {
+    setNicknameError(null);
+    setNicknameSuccess(null);
+
+    const trimmed = nicknameInput.trim();
+    if (trimmed.length < 2 || trimmed.length > 32) {
+      setNicknameError(tr('nicknameLengthError'));
+      return;
+    }
+
+    const nicknameRegex = /^[a-zA-Z0-9_а-яА-ЯёЁ\s\-]+$/;
+    if (!nicknameRegex.test(trimmed)) {
+      setNicknameError(tr('nicknameInvalidCharError'));
+      return;
+    }
+
+    setIsSavingNickname(true);
+    let currentToken = token || (await storage.getItem('token'));
+    if (!currentToken) {
+      setNicknameError(tr('nicknameSaveError'));
+      setIsSavingNickname(false);
+      return;
+    }
+
+    try {
+      let res = await fetch(`${BASE_URL}/api/v2/profile/update-nickname`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${currentToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ nickname: trimmed })
+      });
+
+      if (!res.ok && (res.status === 401 || res.status === 403)) {
+        const refreshedToken = await refreshTokenOnServer();
+        if (refreshedToken) {
+          currentToken = refreshedToken;
+          res = await fetch(`${BASE_URL}/api/v2/profile/update-nickname`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${currentToken}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ nickname: trimmed })
+          });
+        } else {
+          await handleLogout();
+          setIsSavingNickname(false);
+          return;
+        }
+      }
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          if (data.token) {
+            setToken(data.token);
+            await storage.setItem('token', data.token);
+          }
+          setUser((prev) => {
+            if (!prev) return prev;
+            return { ...prev, nickname: data.nickname };
+          });
+          setNicknameSuccess(tr('nicknameSaved'));
+        } else {
+          setNicknameError(tr('nicknameSaveError'));
+        }
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        if (errData.code === 'NICKNAME_TAKEN') {
+          setNicknameError(tr('nicknameTakenError'));
+        } else if (errData.code === 'NICKNAME_LENGTH') {
+          setNicknameError(tr('nicknameLengthError'));
+        } else if (errData.code === 'NICKNAME_INVALID') {
+          setNicknameError(tr('nicknameInvalidCharError'));
+        } else {
+          setNicknameError(errData.error || tr('nicknameSaveError'));
+        }
+      }
+    } catch (err) {
+      console.error('Error saving nickname:', err);
+      setNicknameError(tr('nicknameSaveError'));
+    } finally {
+      setIsSavingNickname(false);
     }
   };
 
@@ -3054,6 +3156,46 @@ export default function App() {
                   </Text>
                 </View>
               </View>
+            </SurfaceCard>
+
+            <SurfaceCard style={{ padding: layout.cardPad, marginBottom: layout.gap }}>
+              <Text style={styles.cardTitle}>{tr('nicknameSettings')}</Text>
+              <Text style={styles.profileSectionHint}>
+                {tr('nicknameChangeHint')}
+              </Text>
+              <View style={[styles.arenaCodeRow, layout.mobile && styles.arenaCodeRowStack]}>
+                <TextInput
+                  style={[
+                    styles.arenaCodeInput,
+                    layout.mobile ? styles.arenaCodeInputStack : styles.arenaCodeInputFlex,
+                    { letterSpacing: 0 }
+                  ]}
+                  placeholder={tr('nicknamePlaceholder')}
+                  placeholderTextColor="#9ca3af"
+                  value={nicknameInput}
+                  onChangeText={setNicknameInput}
+                  maxLength={32}
+                />
+                <TouchableOpacity
+                  style={[styles.arenaCodeBtn, layout.mobile && styles.arenaCodeBtnStack, { backgroundColor: ui.accent }]}
+                  onPress={handleSaveNickname}
+                  disabled={isSavingNickname}
+                >
+                  <Text style={styles.arenaCodeBtnText}>
+                    {isSavingNickname ? tr('saving') : tr('save')}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              {nicknameError ? (
+                <Text style={[styles.infoBody, { marginTop: 8, color: ui.danger }]}>
+                  {nicknameError}
+                </Text>
+              ) : null}
+              {nicknameSuccess ? (
+                <Text style={[styles.infoBody, { marginTop: 8, color: ui.success }]}>
+                  {nicknameSuccess}
+                </Text>
+              ) : null}
             </SurfaceCard>
 
             <SurfaceCard style={{ padding: layout.cardPad, marginBottom: layout.gap }}>

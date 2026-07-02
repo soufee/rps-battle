@@ -312,7 +312,19 @@ export const TRANSLATIONS = {
     logGameOver: "🏁 Game over: {result}",
     resultDraw: "Draw!",
     resultPlayerWin: "Player wins!",
-    resultPlayerLose: "Player loses!"
+    resultPlayerLose: "Player loses!",
+
+    // Nickname Settings
+    nicknameSettings: "Nickname Settings",
+    nicknameChangeHint: "Here you can choose or change the nickname displayed to other players during the game.",
+    nicknamePlaceholder: "Enter nickname...",
+    save: "Save",
+    saving: "Saving...",
+    nicknameSaved: "Nickname saved successfully!",
+    nicknameLengthError: "Nickname must be between 2 and 32 characters.",
+    nicknameInvalidCharError: "Nickname can only contain letters, numbers, spaces, underscores, and hyphens.",
+    nicknameTakenError: "This nickname is already taken.",
+    nicknameSaveError: "Failed to save nickname."
   },
   ru: {
     lobby: "Лобби",
@@ -599,7 +611,19 @@ export const TRANSLATIONS = {
     logGameOver: "🏁 Игра окончена: {result}",
     resultDraw: "Ничья!",
     resultPlayerWin: "Победа игрока!",
-    resultPlayerLose: "Поражение игрока!"
+    resultPlayerLose: "Поражение игрока!",
+
+    // Настройки никнейма
+    nicknameSettings: "Настройки никнейма",
+    nicknameChangeHint: "Здесь вы можете выбрать или изменить никнейм, который видят другие игроки во время игры.",
+    nicknamePlaceholder: "Введите никнейм...",
+    save: "Сохранить",
+    saving: "Сохранение...",
+    nicknameSaved: "Никнейм успешно изменен!",
+    nicknameLengthError: "Никнейм должен быть от 2 до 32 символов.",
+    nicknameInvalidCharError: "Никнейм может содержать только буквы, цифры, пробелы, подчеркивания и дефисы.",
+    nicknameTakenError: "Этот никнейм уже занят.",
+    nicknameSaveError: "Не удалось сохранить никнейм."
   },
   fr: {
     lobby: "Lobby",
