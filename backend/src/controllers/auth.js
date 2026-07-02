@@ -717,7 +717,10 @@ function verifyFacebookSignedRequest(signedRequest, secret) {
   }
 
   const parts = signedRequest.split('.');
-  if (parts.length !== 2) return null;
+  if (parts.length !== 2) {
+    console.error('FB auth failed: signedRequest split length !== 2');
+    return null;
+  }
 
   const [encodedSig, payload] = parts;
 
@@ -728,11 +731,13 @@ function verifyFacebookSignedRequest(signedRequest, secret) {
   let data;
   try {
     data = JSON.parse(decodedPayloadText);
-  } catch {
+  } catch (e) {
+    console.error('FB auth failed: failed to parse JSON payload', e.message);
     return null;
   }
 
   if (data.algorithm !== 'HMAC-SHA256') {
+    console.error('FB auth failed: algorithm mismatch', data.algorithm);
     return null;
   }
 
@@ -745,10 +750,12 @@ function verifyFacebookSignedRequest(signedRequest, secret) {
     if (crypto.timingSafeEqual(sig, expectedSig)) {
       return data;
     }
-  } catch {
+  } catch (e) {
+    console.error('FB auth failed: timingSafeEqual error', e.message);
     return null;
   }
 
+  console.error('FB auth failed: signature mismatch');
   return null;
 }
 
