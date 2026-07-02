@@ -464,7 +464,8 @@ export async function nativeAuthGoogle(req, res) {
     const nickname = 'GoogleNativePlayer_' + crypto.randomBytes(3).toString('hex');
 
     let user = await prisma.user.findFirst({
-      where: { externalId: mockGoogleId, platform: 'android' }
+      where: { externalId: mockGoogleId, platform: 'android' },
+      include: { stats: true }
     });
 
     if (!user) {
@@ -474,7 +475,8 @@ export async function nativeAuthGoogle(req, res) {
           platform: 'android',
           externalId: mockGoogleId,
           stats: { create: {} }
-        }
+        },
+        include: { stats: true }
       });
     }
 
@@ -506,7 +508,8 @@ export async function authVKMiniApp(req, res) {
   try {
     const externalId = String(vk_user_id);
     let user = await prisma.user.findFirst({
-      where: { externalId, platform: 'vk' }
+      where: { externalId, platform: 'vk' },
+      include: { stats: true }
     });
 
     if (!user) {
@@ -517,7 +520,8 @@ export async function authVKMiniApp(req, res) {
           platform: 'vk',
           externalId,
           stats: { create: {} }
-        }
+        },
+        include: { stats: true }
       });
     }
 
@@ -575,7 +579,8 @@ export async function authFacebookInstant(req, res) {
   try {
     const externalId = String(fbData.player_id || fbData.user_id);
     let user = await prisma.user.findFirst({
-      where: { externalId, platform: 'facebook' }
+      where: { externalId, platform: 'facebook' },
+      include: { stats: true }
     });
 
     if (!user) {
@@ -585,7 +590,8 @@ export async function authFacebookInstant(req, res) {
           platform: 'facebook',
           externalId,
           stats: { create: {} }
-        }
+        },
+        include: { stats: true }
       });
     }
 
@@ -653,7 +659,8 @@ export async function authGuest(req, res) {
   try {
     const externalId = `guest:${deviceId}`;
     let user = await prisma.user.findFirst({
-      where: { externalId, platform: plat }
+      where: { externalId, platform: plat },
+      include: { stats: true }
     });
 
     if (!user) {
@@ -663,7 +670,8 @@ export async function authGuest(req, res) {
           platform: plat,
           externalId,
           stats: { create: {} }
-        }
+        },
+        include: { stats: true }
       });
     }
 
@@ -707,7 +715,8 @@ export async function authYandexGames(req, res) {
 
   try {
     let user = await prisma.user.findFirst({
-      where: { externalId, platform: 'yandex' }
+      where: { externalId, platform: 'yandex' },
+      include: { stats: true }
     });
 
     if (!user) {
@@ -718,7 +727,8 @@ export async function authYandexGames(req, res) {
           platform: 'yandex',
           externalId,
           stats: { create: {} }
-        }
+        },
+        include: { stats: true }
       });
     }
 
