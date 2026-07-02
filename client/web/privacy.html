@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Политика конфиденциальности — RPS Battles</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-color: #0b0e17;
+      --card-bg: rgba(19, 25, 40, 0.65);
+      --card-border: rgba(0, 240, 255, 0.15);
+      --accent-cyan: #00f0ff;
+      --accent-pink: #ff007f;
+      --text-primary: #f3f4f6;
+      --text-secondary: #9ca3af;
+      --text-muted: #6b7280;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-primary);
+      font-family: 'Inter', sans-serif;
+      line-height: 1.6;
+      padding: 40px 20px;
+      min-height: 100vh;
+      background-image: 
+        radial-gradient(circle at 10% 20%, rgba(0, 240, 255, 0.05) 0%, transparent 40%),
+        radial-gradient(circle at 90% 80%, rgba(ff, 0, 7f, 0.05) 0%, transparent 40%);
+      background-attachment: fixed;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+
+    .logo-container {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-family: 'Outfit', sans-serif;
+      font-weight: 800;
+      font-size: 1.5rem;
+      color: var(--text-primary);
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin-bottom: 15px;
+      border: 1px solid var(--card-border);
+      padding: 8px 16px;
+      border-radius: 30px;
+      background: rgba(255, 255, 255, 0.02);
+      backdrop-filter: blur(10px);
+    }
+
+    .logo-shield {
+      color: var(--accent-cyan);
+      text-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
+    }
+
+    h1 {
+      font-family: 'Outfit', sans-serif;
+      font-weight: 800;
+      font-size: 2.2rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      background: linear-gradient(135deg, var(--accent-cyan) 0%, var(--accent-pink) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-shadow: 0 0 30px rgba(0, 240, 255, 0.1);
+      margin-bottom: 10px;
+    }
+
+    .last-updated {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 30px;
+      margin-bottom: 25px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(12px);
+    }
+
+    h2 {
+      font-family: 'Outfit', sans-serif;
+      font-weight: 600;
+      font-size: 1.3rem;
+      color: var(--accent-cyan);
+      margin-bottom: 15px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid rgba(0, 240, 255, 0.1);
+      padding-bottom: 8px;
+    }
+
+    p {
+      color: var(--text-secondary);
+      margin-bottom: 15px;
+      font-size: 0.95rem;
+    }
+
+    ul {
+      margin-left: 20px;
+      margin-bottom: 15px;
+      color: var(--text-secondary);
+    }
+
+    li {
+      margin-bottom: 8px;
+      font-size: 0.95rem;
+    }
+
+    a {
+      color: var(--accent-pink);
+      text-decoration: none;
+      transition: color 0.2s, text-shadow 0.2s;
+    }
+
+    a:hover {
+      color: #ff3399;
+      text-shadow: 0 0 8px rgba(255, 0, 127, 0.3);
+    }
+
+    .footer {
+      text-align: center;
+      margin-top: 50px;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+
+    .btn {
+      display: inline-block;
+      padding: 12px 24px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--accent-cyan) 0%, rgba(0, 240, 255, 0.8) 100%);
+      color: #000;
+      font-family: 'Outfit', sans-serif;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      cursor: pointer;
+      border: none;
+      transition: transform 0.2s, box-shadow 0.2s;
+      box-shadow: 0 0 15px rgba(0, 240, 255, 0.3);
+      margin-top: 15px;
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 0 25px rgba(0, 240, 255, 0.5);
+      color: #000;
+    }
+
+    .contact-email {
+      font-family: monospace;
+      background: rgba(0, 240, 255, 0.05);
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid rgba(0, 240, 255, 0.1);
+      color: var(--accent-cyan);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="logo-container">
+        <span class="logo-shield">🛡️</span> RPS Battles
+      </div>
+      <h1>Политика конфиденциальности</h1>
+      <div class="last-updated">Последнее обновление: 2 июля 2026 г.</div>
+    </header>
+
+    <main>
+      <div class="card">
+        <h2>1. Общие положения</h2>
+        <p>Настоящая Политика конфиденциальности описывает, как игра <strong>RPS Battles</strong> (далее — «Игра») собирает, использует, хранит и защищает информацию о пользователях (далее — «Игрок» или «Вы»). Мы ценим вашу конфиденциальность и стремимся защищать ваши персональные данные.</p>
+        <p>Используя Игру, Вы соглашаетесь с условиями настоящей Политики конфиденциальности. Если Вы не согласны с какими-либо из её условий, пожалуйста, прекратите использование Игры.</p>
+      </div>
+
+      <div class="card">
+        <h2>2. Какие данные мы собираем</h2>
+        <p>Игра ориентирована на защиту конфиденциальности игроков. Мы собираем только те данные, которые необходимы для поддержания игрового процесса, ведения статистики, мультиплеера и таблицы лидеров:</p>
+        <ul>
+          <li><strong>Идентификатор пользователя (ID):</strong> Внутренний уникальный идентификатор (UUID) или ID, предоставляемый социальной сетью/платформой (VKontakte ID, Facebook Player ID, Yandex Player ID) для авторизации и сохранения прогресса.</li>
+          <li><strong>Публичный никнейм и Аватар:</strong> Выбранное вами имя (или имя, предоставленное платформой) и ссылка на изображение профиля. Никнейм используется исключительно для отображения другим игрокам во время PvP-дуэлей и в таблицах лидеров.</li>
+          <li><strong>Игровая статистика:</strong> Количество сыгранных партий, побед, поражений, ничьих, текущий уровень MMR (рейтинг подбора соперников), а также ваш прогресс в режиме «Башня».</li>
+          <li><strong>Идентификатор устройства:</strong> При игре в качестве гостя (Guest account) для уникализации вашего прогресса на конкретном устройстве без авторизации.</li>
+        </ul>
+        <p>Мы <strong>не собираем</strong> и не обрабатываем чувствительные персональные данные, такие как номера телефонов, реальные адреса, платежная информация или пароли.</p>
+      </div>
+
+      <div class="card">
+        <h2>3. Цель обработки данных</h2>
+        <p>Собранные данные используются исключительно для следующих целей:</p>
+        <ul>
+          <li>Обеспечение функционирования Игры и поддержка сетевого режима (PvP подбор соперников).</li>
+          <li>Хранение и отображение вашей игровой статистики, рейтинга и достижений.</li>
+          <li>Идентификация ваших игровых сессий (через безопасные токены авторизации JWT).</li>
+          <li>Устранение ошибок, анализ стабильности и улучшение Игры.</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h2>4. Передача данных третьим лицам</h2>
+        <p>Мы не продаем, не обмениваем и не передаем ваши личные данные сторонним лицам. Передача данных может осуществляться только в следующих случаях:</p>
+        <ul>
+          <li>Для работы Игры в рамках платформ (VK Mini Apps, Facebook Instant Games, Яндекс Игры) в соответствии с правилами и SDK данных платформ.</li>
+          <li>В случаях, прямо предусмотренных применимым законодательством.</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h2>5. Защита и хранение данных</h2>
+        <p>Мы используем современные методы шифрования данных (включая HTTPS) и токены авторизации для предотвращения несанкционированного доступа к вашему профилю. Все игровые профили хранятся на защищенных серверах.</p>
+        <p>Игровые данные хранятся до тех пор, пока вы используете Игру или ваш аккаунт активен. Вы можете запросить удаление вашего профиля и всех связанных данных в любой момент.</p>
+      </div>
+
+      <div class="card">
+        <h2>6. Права игроков и удаление данных</h2>
+        <p>Вы имеете право:</p>
+        <ul>
+          <li>Просматривать и изменять ваш никнейм через настройки профиля в Игре.</li>
+          <li>Отозвать согласие на обработку данных, выйдя из аккаунта или удалив Игру.</li>
+          <li>Запросить полное удаление вашей учетной записи и истории игр.</li>
+        </ul>
+        <p>Для удаления аккаунта или по любым вопросам конфиденциальности Вы можете связаться с нами по электронной почте: <span class="contact-email">privacy@rps-battles.com</span>. Мы удалим ваши данные в течение 30 дней с момента получения запроса.</p>
+      </div>
+
+      <div class="card" style="text-align: center;">
+        <button class="btn" onclick="window.history.back()">Назад в игру</button>
+      </div>
+    </main>
+
+    <div class="footer">
+      <p>&copy; 2026 RPS Battles. Все права защищены.</p>
+    </div>
+  </div>
+</body>
+</html>

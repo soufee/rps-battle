@@ -136,4 +136,18 @@ if (PLATFORM === 'fb') {
   console.log('Wrote dist/fbapp-config.json');
 }
 
+// Copy static legal documents to dist
+const webDir = path.join(__dirname, '../web');
+const privacySrc = path.join(webDir, 'privacy.html');
+const termsSrc = path.join(webDir, 'terms.html');
+
+if (fs.existsSync(privacySrc)) {
+  fs.copyFileSync(privacySrc, path.join(distDir, 'privacy.html'));
+  console.log('Copied privacy.html to dist');
+}
+if (fs.existsSync(termsSrc)) {
+  fs.copyFileSync(termsSrc, path.join(distDir, 'terms.html'));
+  console.log('Copied terms.html to dist');
+}
+
 console.log(`Patched ${indexPath} → ${bundle} (platform: ${PLATFORM})`);

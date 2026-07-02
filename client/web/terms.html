@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Пользовательское соглашение — RPS Battles</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-color: #0b0e17;
+      --card-bg: rgba(19, 25, 40, 0.65);
+      --card-border: rgba(0, 240, 255, 0.15);
+      --accent-cyan: #00f0ff;
+      --accent-pink: #ff007f;
+      --text-primary: #f3f4f6;
+      --text-secondary: #9ca3af;
+      --text-muted: #6b7280;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-primary);
+      font-family: 'Inter', sans-serif;
+      line-height: 1.6;
+      padding: 40px 20px;
+      min-height: 100vh;
+      background-image: 
+        radial-gradient(circle at 10% 20%, rgba(0, 240, 255, 0.05) 0%, transparent 40%),
+        radial-gradient(circle at 90% 80%, rgba(ff, 0, 7f, 0.05) 0%, transparent 40%);
+      background-attachment: fixed;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+
+    .logo-container {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-family: 'Outfit', sans-serif;
+      font-weight: 800;
+      font-size: 1.5rem;
+      color: var(--text-primary);
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin-bottom: 15px;
+      border: 1px solid var(--card-border);
+      padding: 8px 16px;
+      border-radius: 30px;
+      background: rgba(255, 255, 255, 0.02);
+      backdrop-filter: blur(10px);
+    }
+
+    .logo-shield {
+      color: var(--accent-cyan);
+      text-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
+    }
+
+    h1 {
+      font-family: 'Outfit', sans-serif;
+      font-weight: 800;
+      font-size: 2.2rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      background: linear-gradient(135deg, var(--accent-cyan) 0%, var(--accent-pink) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-shadow: 0 0 30px rgba(0, 240, 255, 0.1);
+      margin-bottom: 10px;
+    }
+
+    .last-updated {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 30px;
+      margin-bottom: 25px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(12px);
+    }
+
+    h2 {
+      font-family: 'Outfit', sans-serif;
+      font-weight: 600;
+      font-size: 1.3rem;
+      color: var(--accent-cyan);
+      margin-bottom: 15px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid rgba(0, 240, 255, 0.1);
+      padding-bottom: 8px;
+    }
+
+    p {
+      color: var(--text-secondary);
+      margin-bottom: 15px;
+      font-size: 0.95rem;
+    }
+
+    ul {
+      margin-left: 20px;
+      margin-bottom: 15px;
+      color: var(--text-secondary);
+    }
+
+    li {
+      margin-bottom: 8px;
+      font-size: 0.95rem;
+    }
+
+    a {
+      color: var(--accent-pink);
+      text-decoration: none;
+      transition: color 0.2s, text-shadow 0.2s;
+    }
+
+    a:hover {
+      color: #ff3399;
+      text-shadow: 0 0 8px rgba(255, 0, 127, 0.3);
+    }
+
+    .footer {
+      text-align: center;
+      margin-top: 50px;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+
+    .btn {
+      display: inline-block;
+      padding: 12px 24px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--accent-cyan) 0%, rgba(0, 240, 255, 0.8) 100%);
+      color: #000;
+      font-family: 'Outfit', sans-serif;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      cursor: pointer;
+      border: none;
+      transition: transform 0.2s, box-shadow 0.2s;
+      box-shadow: 0 0 15px rgba(0, 240, 255, 0.3);
+      margin-top: 15px;
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 0 25px rgba(0, 240, 255, 0.5);
+      color: #000;
+    }
+
+    .contact-email {
+      font-family: monospace;
+      background: rgba(0, 240, 255, 0.05);
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid rgba(0, 240, 255, 0.1);
+      color: var(--accent-cyan);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="logo-container">
+        <span class="logo-shield">⚔️</span> RPS Battles
+      </div>
+      <h1>Пользовательское соглашение</h1>
+      <div class="last-updated">Последнее обновление: 2 июля 2026 г.</div>
+    </header>
+
+    <main>
+      <div class="card">
+        <h2>1. Общие положения</h2>
+        <p>Настоящее Пользовательское соглашение (далее — «Соглашение») регулирует отношения между создателями игры <strong>RPS Battles</strong> (далее — «Администрация») и пользователем игры (далее — «Пользователь» или «Игрок»).</p>
+        <p>Запуск Игры, авторизация или совершение любых иных действий в Игре означает ваше полное и безоговорочное согласие со всеми пунктами данного Соглашения. Если вы не согласны с какими-либо положениями, вы должны немедленно прекратить использование Игры.</p>
+      </div>
+
+      <div class="card">
+        <h2>2. Правила использования Игры</h2>
+        <p>Игрок соглашается использовать Игру добросовестно. В Игре <strong>категорически запрещено</strong>:</p>
+        <ul>
+          <li>Использование читов, ботов, модификаций кода, макросов или любого другого стороннего программного обеспечения, дающего преимущество в игре или автоматизирующего игровой процесс на PvP-арене.</li>
+          <li>Использование нецензурной лексики, оскорблений, призывов к насилию, разжигания ненависти или дискриминации в качестве игрового никнейма.</li>
+          <li>Использование и эксплуатация обнаруженных внутриигровых ошибок (багов/эксплойтов) в личных целях.</li>
+          <li>Попытки взлома, декомпиляции кода или нарушения работоспособности серверов Игры.</li>
+        </ul>
+        <p>В случае нарушения вышеописанных правил Администрация оставляет за собой право ограничить доступ Игрока к Игре или заблокировать его аккаунт (включая обнуление MMR и результатов турниров) временно или навсегда.</p>
+      </div>
+
+      <div class="card">
+        <h2>3. Интеллектуальная собственность</h2>
+        <p>Все права на Игру, включая исходный код, графические элементы, скины, звуковое сопровождение, ботов и базу данных, принадлежат Администрации. Запрещается несанкционированное копирование, распространение или коммерческое использование элементов Игры без предварительного письменного согласия Администрации.</p>
+      </div>
+
+      <div class="card">
+        <h2>4. Отказ от гарантий</h2>
+        <p>Игра предоставляется на условиях «как есть» (as is). Администрация не гарантирует бесперебойную работу Игры, отсутствие временных сбоев, задержек сети или потерю игрового прогресса вследствие технических работ. Мы прикладываем все разумные усилия для поддержания серверов в рабочем состоянии.</p>
+      </div>
+
+      <div class="card">
+        <h2>5. Ограничение ответственности</h2>
+        <p>Администрация не несет ответственности за любой прямой или косвенный ущерб, возникший в результате использования или невозможности использования Игры, включая упущенную выгоду, моральный вред или технические неполадки на стороне Пользователя.</p>
+      </div>
+
+      <div class="card">
+        <h2>6. Изменения и поддержка</h2>
+        <p>Администрация имеет право изменять баланс игры, структуру турниров, правила начисления рейтинга MMR и другие параметры Игры без предварительного уведомления.</p>
+        <p>Если у вас возникли вопросы, предложения или претензии, вы можете связаться со службой поддержки по адресу: <span class="contact-email">support@rps-battles.com</span>.</p>
+      </div>
+
+      <div class="card" style="text-align: center;">
+        <button class="btn" onclick="window.history.back()">Назад в игру</button>
+      </div>
+    </main>
+
+    <div class="footer">
+      <p>&copy; 2026 RPS Battles. Все права защищены.</p>
+    </div>
+  </div>
+</body>
+</html>

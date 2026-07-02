@@ -101,6 +101,15 @@ for (const doc of PUBLIC_DOCS) {
 }
 // Docs (protected) — must be registered before SPA fallback
 app.use('/docs', requireDocsAuth, express.static(docsStaticPath));
+
+// Legal pages
+app.get('/privacy', (req, res) => {
+  res.sendFile(path.join(clientDistPath, 'privacy.html'));
+});
+app.get('/terms', (req, res) => {
+  res.sendFile(path.join(clientDistPath, 'terms.html'));
+});
+
 app.use('/', express.static(clientDistPath));
 app.use('/v2', express.static(clientDistPath));
 // VK Mini Apps открывает игру по адресу /vk — та же сборка, клиент по пути
