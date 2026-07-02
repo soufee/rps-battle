@@ -80,6 +80,14 @@ const IS_VK_ENTRY = Platform.OS === 'web'
   && !!window.location
   && /^\/vk(\/|$)/.test(window.location.pathname);
 
+// Запуск внутри Facebook Instant Games (сборка PLATFORM=fb на хостинге FB).
+// Аккаунт задаётся Facebook SDK — выход из аккаунта скрыт, как в VK Mini Apps.
+const IS_FB_ENTRY = Platform.OS === 'web'
+  && typeof window !== 'undefined'
+  && window.__RPS_PLATFORM__ === 'fb';
+
+const IS_MANAGED_ENTRY = IS_VK_ENTRY || IS_FB_ENTRY;
+
 const PIECE_TYPE_NAMES = { rock: 'Камень', paper: 'Бумага', scissors: 'Ножницы' };
 
 const LANG_NAMES = {
@@ -434,6 +442,15 @@ const brandStyles = StyleSheet.create({
     marginTop: 12,
   },
   loginBtnVkText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  loginBtnFb: {
+    alignSelf: 'stretch',
+    backgroundColor: '#1877F2',
+    paddingVertical: 16,
+    borderRadius: 16,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  loginBtnFbText: { color: '#fff', fontSize: 16, fontWeight: '800' },
   loginBtnGuest: {
     alignSelf: 'stretch',
     backgroundColor: 'transparent',
@@ -980,7 +997,7 @@ export default function App() {
         }
       }
 
-      if (typeof window !== 'undefined' && window.FBInstant) {
+      if (IS_FB_ENTRY && typeof window !== 'undefined' && window.FBInstant) {
         isFB = true;
       }
 
@@ -1084,11 +1101,21 @@ export default function App() {
           await FBInstant.startGameAsync();
 
           const signedInfo = await FBInstant.player.getSignedPlayerInfoAsync();
-          
+          const playerName = typeof FBInstant.player.getName === 'function'
+            ? FBInstant.player.getName()
+            : null;
+          const playerPhoto = typeof FBInstant.player.getPhoto === 'function'
+            ? FBInstant.player.getPhoto()
+            : null;
+
           const res = await fetch(`${BASE_URL}/api/v2/auth/facebook`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ signedRequest: signedInfo.getSignature() })
+            body: JSON.stringify({
+              signedRequest: signedInfo.getSignature(),
+              name: playerName,
+              photo: playerPhoto
+            })
           });
 
           if (res.ok) {
@@ -1729,6 +1756,12 @@ export default function App() {
   const handleVKIDLogin = () => {
     if (typeof window !== 'undefined') {
       window.location.href = `${BASE_URL}/api/v2/auth/vkid`;
+    }
+  };
+
+  const handleFacebookLogin = () => {
+    if (typeof window !== 'undefined') {
+      window.location.href = `${BASE_URL}/api/v2/auth/facebook-web`;
     }
   };
 
@@ -2529,9 +2562,15 @@ export default function App() {
                   </TouchableOpacity>
                 )}
 
-                {isWebPlatform && !IS_VK_ENTRY && (
+                {isWebPlatform && !IS_MANAGED_ENTRY && (
                   <TouchableOpacity style={brandStyles.loginBtnVk} onPress={handleVKIDLogin}>
                     <Text style={brandStyles.loginBtnVkText}>{tr('loginVkId')}</Text>
+                  </TouchableOpacity>
+                )}
+
+                {isWebPlatform && !IS_MANAGED_ENTRY && (
+                  <TouchableOpacity style={brandStyles.loginBtnFb} onPress={handleFacebookLogin}>
+                    <Text style={brandStyles.loginBtnFbText}>{tr('loginFacebook')}</Text>
                   </TouchableOpacity>
                 )}
 
@@ -2986,7 +3025,7 @@ export default function App() {
                   >
                     <Text style={styles.headerIconBtnText}>⚙️</Text>
                   </TouchableOpacity>
-                  {!IS_VK_ENTRY && (
+                  {!IS_MANAGED_ENTRY && (
                     <TouchableOpacity
                       style={styles.lobbyLogoutBtn}
                       onPress={handleLogout}
@@ -3320,7 +3359,7 @@ export default function App() {
               )}
             </SurfaceCard>
 
-            {!IS_VK_ENTRY && (
+            {!IS_MANAGED_ENTRY && (
               <TouchableOpacity style={styles.profileLogoutBtn} onPress={handleLogout}>
                 <Text style={styles.profileLogoutBtnText}>{tr('logoutAccount')}</Text>
               </TouchableOpacity>

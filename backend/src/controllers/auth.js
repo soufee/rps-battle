@@ -8,6 +8,7 @@ const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const BASE_URL = process.env.BASE_URL || 'https://rps-battles.com';
 const VK_APP_SECRET = process.env.VK_APP_SECRET;
+const FB_APP_ID = process.env.FB_APP_ID;
 const FB_APP_SECRET = process.env.FB_APP_SECRET;
 const YANDEX_APP_SECRET = process.env.YANDEX_APP_SECRET;
 
@@ -343,6 +344,106 @@ export async function vkidCallback(req, res) {
   }
 }
 
+// --- Facebook Login (OAuth) — вход через FB-аккаунт на обычном вебе ---
+// Флоу: /api/v2/auth/facebook-web → facebook.com/dialog/oauth → /auth/facebook/callback →
+// обмен кода → /me → JWT. Тот же platform/externalId, что у Facebook Instant Games.
+const FB_AUTH_URL = 'https://www.facebook.com/v21.0/dialog/oauth';
+const FB_TOKEN_URL = 'https://graph.facebook.com/v21.0/oauth/access_token';
+const FB_USER_URL = 'https://graph.facebook.com/v21.0/me';
+const FB_REDIRECT_URI = `${BASE_URL}/auth/facebook/callback`;
+
+export async function loginFacebookWeb(req, res) {
+  if (!FB_APP_ID || !FB_APP_SECRET) {
+    return res.status(400).json({ error: 'Facebook OAuth is not configured on server (FB_APP_ID / FB_APP_SECRET)' });
+  }
+
+  const state = createOAuthState();
+  const params = new URLSearchParams({
+    client_id: FB_APP_ID,
+    redirect_uri: FB_REDIRECT_URI,
+    state,
+    scope: 'public_profile',
+    response_type: 'code'
+  });
+  res.redirect(`${FB_AUTH_URL}?${params}`);
+}
+
+export async function facebookWebCallback(req, res) {
+  try {
+    const { code, state, error: oauthError, error_description: errorDesc } = req.query;
+    if (oauthError) {
+      throw new Error(errorDesc || String(oauthError));
+    }
+    if (!code) {
+      throw new Error('Отсутствует код авторизации от Facebook');
+    }
+    if (!verifyOAuthState(state)) {
+      throw new Error('Некорректный state (возможна подмена или устаревшая сессия)');
+    }
+
+    const tokenRes = await fetch(
+      `${FB_TOKEN_URL}?${new URLSearchParams({
+        client_id: FB_APP_ID,
+        client_secret: FB_APP_SECRET,
+        redirect_uri: FB_REDIRECT_URI,
+        code: String(code)
+      })}`
+    );
+    const tokenData = await tokenRes.json();
+    if (!tokenRes.ok || !tokenData.access_token) {
+      console.error('Facebook token exchange failed:', tokenData);
+      throw new Error(tokenData.error?.message || tokenData.error || 'Facebook token exchange failed');
+    }
+
+    const userRes = await fetch(
+      `${FB_USER_URL}?${new URLSearchParams({
+        fields: 'id,name,picture.type(large)',
+        access_token: tokenData.access_token
+      })}`
+    );
+    const fbUser = await userRes.json();
+    if (!userRes.ok || !fbUser.id) {
+      console.error('Facebook user info failed:', fbUser);
+      throw new Error(fbUser.error?.message || 'Facebook user info failed');
+    }
+
+    const externalId = String(fbUser.id);
+    const avatar = fbUser.picture?.data?.url || null;
+
+    let user = await prisma.user.findFirst({ where: { externalId, platform: 'facebook' } });
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          nickname: `${fbUser.name || 'FB_Player'}_${crypto.randomBytes(3).toString('hex')}`,
+          avatarUrl: avatar,
+          platform: 'facebook',
+          externalId,
+          stats: { create: {} }
+        }
+      });
+    } else if (avatar && avatar !== user.avatarUrl) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: { avatarUrl: avatar }
+      });
+    }
+
+    if (user.isBanned && user.bannedUntil && new Date() < user.bannedUntil) {
+      return res.status(403).send(`Вы забанены до ${user.bannedUntil.toLocaleString()}. Причина: ${user.bannedReason}`);
+    }
+
+    const { accessToken, refreshToken } = generateTokens(user);
+    res.cookie('token', accessToken, {
+      ...v2CookieOptions(),
+      maxAge: 30 * 24 * 60 * 60 * 1000
+    });
+    res.redirect(`/?token=${encodeURIComponent(accessToken)}&refreshToken=${encodeURIComponent(refreshToken)}`);
+  } catch (error) {
+    console.error('Facebook web callback error:', error);
+    res.status(500).send(`Ошибка входа через Facebook: ${error.message}`);
+  }
+}
+
 export async function refresh(req, res) {
   const { refreshToken } = req.body;
   if (!refreshToken) {
@@ -568,7 +669,7 @@ function verifyVKSign(params, secret) {
 }
 
 export async function authFacebookInstant(req, res) {
-  const { signedRequest } = req.body;
+  const { signedRequest, name, photo } = req.body;
   if (!signedRequest) return res.status(400).json({ error: 'signedRequest is required' });
 
   const fbData = verifyFacebookSignedRequest(signedRequest, FB_APP_SECRET);
@@ -586,11 +687,18 @@ export async function authFacebookInstant(req, res) {
     if (!user) {
       user = await prisma.user.create({
         data: {
-          nickname: 'FB_Player_' + crypto.randomBytes(3).toString('hex'),
+          nickname: `${name || 'FB_Player'}_${crypto.randomBytes(3).toString('hex')}`,
+          avatarUrl: photo || null,
           platform: 'facebook',
           externalId,
           stats: { create: {} }
         },
+        include: { stats: true }
+      });
+    } else if (photo && photo !== user.avatarUrl) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: { avatarUrl: photo },
         include: { stats: true }
       });
     }

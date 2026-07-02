@@ -19,6 +19,8 @@ import {
   googleCallback,
   loginVKID,
   vkidCallback,
+  loginFacebookWeb,
+  facebookWebCallback,
   refresh,
   status,
   devLogin,
@@ -66,6 +68,8 @@ app.get('/api/v2/auth/google/callback', googleCallback);
 app.get('/auth/google/callback', googleCallback);
 app.get('/api/v2/auth/vkid', loginVKID);
 app.get('/auth/vk/callback', vkidCallback);
+app.get('/api/v2/auth/facebook-web', loginFacebookWeb);
+app.get('/auth/facebook/callback', facebookWebCallback);
 app.get('/api/v2/auth/dev', devLogin);
 app.post('/api/v2/auth/refresh', refresh);
 app.get('/api/v2/auth/status', authenticateToken, status);
