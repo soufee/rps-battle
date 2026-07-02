@@ -2548,6 +2548,10 @@ export default function App() {
             showsVerticalScrollIndicator={false}
           >
             <PageShell narrow padH={layout.padH}>
+              <View style={brandStyles.authHero}>
+                <Image source={BRAND_LOGO} style={brandStyles.authLogo} resizeMode="contain" />
+              </View>
+
               <View style={brandStyles.authArtFrame}>
                 <Image source={BRAND_ART} style={brandStyles.authArtImg} resizeMode="cover" />
               </View>
