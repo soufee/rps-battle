@@ -33,8 +33,8 @@
 
 В разделе «Настройки» укажите:
 
-- **Адрес iframe / URL приложения**: `https://rps-battles.com/`
-- **Мобильный адрес** (m.vk.com и приложения VK): тот же `https://rps-battles.com/`
+- **Адрес iframe / URL приложения**: `https://rps-battles.com/vk`
+- **Мобильный адрес** (m.vk.com и приложения VK): тот же `https://rps-battles.com/vk`
 - Состояние: для начала — «Приложение отключено / видно только разработчикам»,
   чтобы спокойно протестировать.
 
@@ -97,7 +97,7 @@ systemctl restart rps-v2-backend
 
 ## Как это устроено технически (справка)
 
-- VK открывает `https://rps-battles.com/` в iframe и добавляет к URL параметры
+- VK открывает `https://rps-battles.com/vk` в iframe и добавляет к URL параметры
   запуска: `vk_user_id`, `vk_app_id`, `vk_language`, … и подпись `sign`.
 - Клиент (`client/App.js`) видит `vk_user_id`+`sign`, вызывает
   `vkBridge.send('VKWebAppInit')` (обязательное «приложение готово» для VK),
@@ -116,7 +116,7 @@ systemctl restart rps-v2-backend
 | Симптом | Причина / решение |
 |---|---|
 | Пустой/серый экран в VK | Проверьте заголовок: `curl -skI https://rps-battles.com/ \| grep -i security` — должен содержать `frame-ancestors … vk.com …`. Конфиг: `/etc/nginx/sites-available/rps-battles.com`. |
-| Показывается экран входа вместо автологина | В URL iframe нет `vk_user_id`/`sign` (открыли сайт напрямую, не через VK) — это нормально для обычного веба. Внутри VK: проверьте, что адрес iframe в настройках — именно `https://rps-battles.com/`. |
+| Показывается экран входа вместо автологина | В URL iframe нет `vk_user_id`/`sign` (открыли сайт напрямую, не через VK) — это нормально для обычного веба. Внутри VK: проверьте, что адрес iframe в настройках — именно `https://rps-battles.com/vk`. |
 | Ошибка 401 `Invalid VK Mini App signature` | Неверный `VK_APP_SECRET` (взяли сервисный ключ вместо защищённого) или ключ от другого приложения. |
 | Ошибка 401 `VK app id mismatch` | `VK_APP_ID` в `.env` не совпадает с ID приложения, из которого открыта игра. |
 | Логи бэкенда | `journalctl -u rps-v2-backend -f` |

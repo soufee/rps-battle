@@ -89,9 +89,15 @@ app.use('/v2/js/bots', express.static(botsStaticPath));
 app.use('/docs', requireDocsAuth, express.static(docsStaticPath));
 app.use('/', express.static(clientDistPath));
 app.use('/v2', express.static(clientDistPath));
+// VK Mini Apps открывает игру по адресу /vk — та же сборка, клиент по пути
+// понимает, что запущен внутри VK (скрывает выход из аккаунта и т.п.)
+app.use('/vk', express.static(clientDistPath));
 
 // For React Navigation HTML5 routing (fallback to index.html)
 app.get('/v2/*', (req, res) => {
+  res.sendFile(path.join(clientDistPath, 'index.html'));
+});
+app.get('/vk/*', (req, res) => {
   res.sendFile(path.join(clientDistPath, 'index.html'));
 });
 app.get('/*', (req, res) => {

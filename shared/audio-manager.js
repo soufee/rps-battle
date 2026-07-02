@@ -42,7 +42,6 @@ class AudioManager {
     this.settings = {
       bgmEnabled: true,
       sfxEnabled: true,
-      voiceEnabled: true,
     };
     this.bgmInstance = null;
     this.currentBgmType = null;
@@ -207,10 +206,7 @@ class AudioManager {
    * Play a short sound effect (+ тактильный отклик, где поддерживается)
    */
   async playSFX(type) {
-    const isVoiceAlert = ['turn', 'victory', 'defeat'].includes(type);
-    const enabled = isVoiceAlert ? this.settings.voiceEnabled : this.settings.sfxEnabled;
-
-    if (!enabled) {
+    if (!this.settings.sfxEnabled) {
       return;
     }
 

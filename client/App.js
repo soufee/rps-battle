@@ -73,6 +73,13 @@ const getBaseUrl = () => {
 };
 const BASE_URL = getBaseUrl();
 
+// Запуск внутри VK Mini Apps: игра открыта по пути /vk (адрес iframe в настройках
+// приложения VK). Аккаунт задаётся самим VK, поэтому выход из аккаунта скрыт.
+const IS_VK_ENTRY = Platform.OS === 'web'
+  && typeof window !== 'undefined'
+  && !!window.location
+  && /^\/vk(\/|$)/.test(window.location.pathname);
+
 const PIECE_TYPE_NAMES = { rock: 'Камень', paper: 'Бумага', scissors: 'Ножницы' };
 
 const LANG_NAMES = {
@@ -676,8 +683,7 @@ export default function App() {
   const [locale, setLocaleState] = useState('ru');
   const [audioSettings, setAudioSettings] = useState({
     bgmEnabled: true,
-    sfxEnabled: true,
-    voiceEnabled: true
+    sfxEnabled: true
   });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
@@ -822,7 +828,7 @@ export default function App() {
     setTimeout(() => setLoading(false), 240);
   };
 
-  // Screen state: 'lobby', 'arena', 'bot_select', 'game', 'profile', 'matchmaking'
+  // Screen state: 'lobby', 'arena', 'arena_private', 'arena_open', 'bot_select', 'game', 'profile', 'matchmaking'
   const [screen, setScreen] = useState('lobby');
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [selectedBotId, setSelectedBotId] = useState('rabbit');
@@ -1452,11 +1458,31 @@ export default function App() {
     }
   };
 
-  /** Быстрая игра из лобби: сразу в очередь подбора + экран поиска. */
+  /** Чужая открытая комната, ожидающая второго игрока (для быстрого матча). */
+  const findJoinableOpenRoom = () => publicRooms.find((room) =>
+    (!user || String(room.creatorId) !== String(user.id)) && (room.playersCount || 1) < 2
+  );
+
+  /** Быстрый матч на арене: если есть чужая открытая комната — сразу в неё, иначе очередь подбора. */
+  const handleArenaQuickMatch = () => {
+    const room = findJoinableOpenRoom();
+    if (room) {
+      handleJoinPublicRoom(room.id);
+      return;
+    }
+    handleJoinQueue();
+  };
+
+  /** Быстрая игра из лобби: открытая комната, если есть, иначе очередь + экран поиска. */
   const handleQuickMatch = () => {
     setProfileMenuOpen(false);
     setArenaStatus('');
     socketRef.current?.emit('lobby:enter');
+    const room = findJoinableOpenRoom();
+    if (room) {
+      handleJoinPublicRoom(room.id);
+      return;
+    }
     handleJoinQueue();
     setScreen('matchmaking');
   };
@@ -2265,8 +2291,7 @@ export default function App() {
             <Text style={styles.settingsSectionTitle}>{tr('audioSettings')}</Text>
             {[
               ['bgmEnabled', 'bgmToggle'],
-              ['sfxEnabled', 'sfxToggle'],
-              ['voiceEnabled', 'voiceToggle']
+              ['sfxEnabled', 'sfxToggle']
             ].map(([key, labelKey]) => (
               <TouchableOpacity
                 key={key}
@@ -2287,6 +2312,70 @@ export default function App() {
         </View>
       </View>
     </Modal>
+  );
+
+  // ─── Модалка вызова на дуэль (арена и её подстраницы) ───
+  const inviteModal = (
+    <Modal animationType="fade" transparent visible={!!pendingInvite}>
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalCard}>
+          <Text style={styles.modalTitle}>{tr('duelChallenge')}</Text>
+          <Text style={styles.modalSubtitle}>
+            {tr('challengesYou', { name: pendingInvite?.from?.name || tr('playerFallback') })}
+          </Text>
+          <View style={[styles.choiceRow, { marginTop: 16 }]}>
+            <TouchableOpacity style={styles.choiceBtn} onPress={() => setPendingInvite(null)}>
+              <Text style={styles.choiceText}>{tr('decline')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.choiceBtn, { backgroundColor: ui.accent }]} onPress={handleAcceptInvite}>
+              <Text style={[styles.choiceText, { color: ui.onAccent }]}>{tr('accept')}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  // ─── Карточки «моя комната ожидает» и статуса — общие для арены и подстраниц ───
+  const arenaStatusBlocks = (
+    <>
+      {myWaitingRoomId && (
+        <SurfaceCard style={{ padding: layout.cardPad, marginBottom: layout.gap }}>
+          <View style={styles.arenaWaitingCard}>
+            <ActivityIndicator size="small" color={ui.accent} />
+            <View style={styles.arenaWaitingCardText}>
+              <Text style={styles.arenaWaitingTitle}>
+                {myWaitingRoomPrivate ? tr('privateRoom') : tr('yourOpenRoom')}
+              </Text>
+              <Text style={styles.arenaWaitingDesc}>
+                {myWaitingRoomPrivate && createdRoomCode
+                  ? tr('waitingOpponentCode', { code: createdRoomCode })
+                  : tr('waitingOpponent')}
+              </Text>
+            </View>
+            <TouchableOpacity style={styles.arenaWaitingCancelBtn} onPress={handleCloseMyWaitingRoom}>
+              <Text style={styles.arenaWaitingCancelText}>{tr('cancel')}</Text>
+            </TouchableOpacity>
+          </View>
+        </SurfaceCard>
+      )}
+
+      {(arenaStatus || isSearchingMatch) && (
+        <SurfaceCard accent style={[styles.arenaStatusCard, { padding: layout.cardPad, marginBottom: layout.gap }]}>
+          {isSearchingMatch && (
+            <ActivityIndicator size="small" color={ui.accent} style={{ marginBottom: 8 }} />
+          )}
+          <Text style={styles.arenaStatusText}>
+            {isSearchingMatch ? tr('searchingOpponent') : arenaStatus}
+          </Text>
+          {isSearchingMatch && (
+            <TouchableOpacity style={styles.arenaLinkBtn} onPress={handleLeaveQueue}>
+              <Text style={styles.arenaLinkBtnText}>{tr('cancelSearch')}</Text>
+            </TouchableOpacity>
+          )}
+        </SurfaceCard>
+      )}
+    </>
   );
 
   if (loading) {
@@ -2400,42 +2489,7 @@ export default function App() {
               </View>
             </View>
 
-            {myWaitingRoomId && (
-              <SurfaceCard style={{ padding: layout.cardPad, marginBottom: layout.gap }}>
-                <View style={styles.arenaWaitingCard}>
-                  <ActivityIndicator size="small" color={ui.accent} />
-                  <View style={styles.arenaWaitingCardText}>
-                    <Text style={styles.arenaWaitingTitle}>
-                      {myWaitingRoomPrivate ? tr('privateRoom') : tr('yourOpenRoom')}
-                    </Text>
-                    <Text style={styles.arenaWaitingDesc}>
-                      {myWaitingRoomPrivate && createdRoomCode
-                        ? tr('waitingOpponentCode', { code: createdRoomCode })
-                        : tr('waitingOpponent')}
-                    </Text>
-                  </View>
-                  <TouchableOpacity style={styles.arenaWaitingCancelBtn} onPress={handleCloseMyWaitingRoom}>
-                    <Text style={styles.arenaWaitingCancelText}>{tr('cancel')}</Text>
-                  </TouchableOpacity>
-                </View>
-              </SurfaceCard>
-            )}
-
-            {(arenaStatus || isSearchingMatch) && (
-              <SurfaceCard accent style={[styles.arenaStatusCard, { padding: layout.cardPad, marginBottom: layout.gap }]}>
-                {isSearchingMatch && (
-                  <ActivityIndicator size="small" color={ui.accent} style={{ marginBottom: 8 }} />
-                )}
-                <Text style={styles.arenaStatusText}>
-                  {isSearchingMatch ? tr('searchingOpponent') : arenaStatus}
-                </Text>
-                {isSearchingMatch && (
-                  <TouchableOpacity style={styles.arenaLinkBtn} onPress={handleLeaveQueue}>
-                    <Text style={styles.arenaLinkBtnText}>{tr('cancelSearch')}</Text>
-                  </TouchableOpacity>
-                )}
-              </SurfaceCard>
-            )}
+            {arenaStatusBlocks}
 
             <SurfaceCard style={{ padding: layout.cardPad, marginBottom: layout.gap }}>
               <Text style={styles.cardTitle}>{tr('gameModes')}</Text>
@@ -2446,7 +2500,7 @@ export default function App() {
                     styles.arenaModeTileHero,
                     isSearchingMatch && styles.arenaModeTileDisabled
                   ]}
-                  onPress={handleJoinQueue}
+                  onPress={handleArenaQuickMatch}
                   disabled={isSearchingMatch}
                   activeOpacity={0.85}
                 >
@@ -2455,111 +2509,28 @@ export default function App() {
                   <Text style={styles.arenaModeDesc}>{tr('quickMatchDesc')}</Text>
                 </TouchableOpacity>
 
-                <View style={[styles.arenaModeRow, isWide && styles.arenaModeRowWide]}>
-                  <TouchableOpacity
-                    style={[styles.arenaModeTile, roomsAtCap && styles.arenaModeTileDisabled]}
-                    onPress={handleCreatePrivateRoom}
-                    disabled={roomsAtCap}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={styles.arenaModeEmoji}>🔒</Text>
-                    <Text style={styles.arenaModeTitle}>{tr('privateMode')}</Text>
-                    <Text style={styles.arenaModeDesc}>{tr('privateModeDesc')}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.arenaModeTile, roomsAtCap && styles.arenaModeTileDisabled]}
-                    onPress={handleCreateOpenRoom}
-                    disabled={roomsAtCap}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={styles.arenaModeEmoji}>🌐</Text>
-                    <Text style={styles.arenaModeTitle}>{tr('openMode')}</Text>
-                    <Text style={styles.arenaModeDesc}>{tr('openModeDesc')}</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {roomsAtCap && (
-                <Text style={[styles.infoBody, { marginTop: 12, color: ui.warning }]}>
-                  {tr('roomsCapHint')}
-                </Text>
-              )}
-            </SurfaceCard>
-
-            <SurfaceCard style={{ padding: layout.cardPad, marginBottom: layout.gap }}>
-              <Text style={styles.cardTitle}>{tr('enterByCode')}</Text>
-              <Text style={[styles.infoBody, { marginBottom: 12 }]}>
-                {tr('privateRoomsHidden')}
-              </Text>
-              <View style={[styles.arenaCodeRow, layout.mobile && styles.arenaCodeRowStack]}>
-                <TextInput
-                  style={[
-                    styles.arenaCodeInput,
-                    layout.mobile ? styles.arenaCodeInputStack : styles.arenaCodeInputFlex
-                  ]}
-                  placeholder={tr('codePlaceholder')}
-                  placeholderTextColor="#9ca3af"
-                  value={roomCodeInput}
-                  onChangeText={setRoomCodeInput}
-                  autoCapitalize="characters"
-                  maxLength={8}
-                />
                 <TouchableOpacity
-                  style={[styles.arenaCodeBtn, layout.mobile && styles.arenaCodeBtnStack]}
-                  onPress={handleJoinByCode}
+                  style={styles.arenaModeNavTile}
+                  onPress={() => setScreen('arena_private')}
+                  activeOpacity={0.85}
                 >
-                  <Text style={styles.arenaCodeBtnText}>{tr('enter')}</Text>
+                  <Text style={styles.arenaModeNavEmoji}>🔒</Text>
+                  <Text style={styles.arenaModeNavTitle} numberOfLines={1}>{tr('privateModeTile')}</Text>
+                  <Text style={styles.arenaModeNavChevron}>›</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.arenaModeNavTile}
+                  onPress={() => setScreen('arena_open')}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.arenaModeNavEmoji}>🌐</Text>
+                  <Text style={styles.arenaModeNavTitle} numberOfLines={1}>{tr('openModeTile')}</Text>
+                  <Text style={styles.arenaModeNavChevron}>›</Text>
                 </TouchableOpacity>
               </View>
             </SurfaceCard>
 
-            <View style={[styles.blockRow, isWide && styles.blockRowWide, { gap: layout.gap }]}>
-              <SurfaceCard
-                style={[
-                  styles.blockFlex,
-                  isWide && styles.blockHalf,
-                  { padding: layout.cardPad, marginBottom: isWide ? 0 : layout.gap }
-                ]}
-              >
-                <Text style={styles.cardTitle}>{tr('openRooms')}</Text>
-                <Text style={[styles.infoBody, { marginBottom: 12 }]}>{tr('upTo10Rooms')}</Text>
-                {publicRooms.filter((room) =>
-                  !user || String(room.creatorId) !== String(user.id)
-                ).length === 0 ? (
-                  <View style={styles.arenaEmptyBox}>
-                    <Text style={styles.arenaEmptyText}>{tr('noOpenRooms')}</Text>
-                  </View>
-                ) : (
-                  publicRooms
-                    .filter((room) => !user || String(room.creatorId) !== String(user.id))
-                    .map((room) => (
-                      <View key={room.id} style={styles.arenaRoomCard}>
-                        <View style={styles.arenaRoomCardInfo}>
-                          <Text style={styles.arenaRoomName} numberOfLines={1}>
-                            {room.creatorName || tr('playerFallback')}
-                          </Text>
-                          <Text style={styles.arenaRoomMeta}>
-                            {tr('openRoomMeta', { count: room.playersCount || 1 })}
-                          </Text>
-                        </View>
-                        <TouchableOpacity
-                          style={styles.arenaJoinBtn}
-                          onPress={() => handleJoinPublicRoom(room.id)}
-                        >
-                          <Text style={styles.arenaJoinBtnText}>{tr('enter')}</Text>
-                        </TouchableOpacity>
-                      </View>
-                    ))
-                )}
-              </SurfaceCard>
-
-              <SurfaceCard
-                style={[
-                  styles.blockFlex,
-                  isWide && styles.blockHalf,
-                  { padding: layout.cardPad, marginBottom: 0 }
-                ]}
-              >
+            <SurfaceCard style={{ padding: layout.cardPad, marginBottom: 0 }}>
                 <Text style={styles.cardTitle}>{tr('playersOnline')}</Text>
                 <Text style={[styles.infoBody, { marginBottom: 12 }]}>
                   {tr('upTo20List')}
@@ -2608,29 +2579,203 @@ export default function App() {
                   ))
                 )}
               </SurfaceCard>
-            </View>
           </PageShell>
         </ScrollView>
 
         {settingsModal}
-        <Modal animationType="fade" transparent visible={!!pendingInvite}>
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalCard}>
-              <Text style={styles.modalTitle}>{tr('duelChallenge')}</Text>
-              <Text style={styles.modalSubtitle}>
-                {tr('challengesYou', { name: pendingInvite?.from?.name || tr('playerFallback') })}
+        {inviteModal}
+      </SafeAreaView>
+    );
+  }
+
+  // --- Арена: приватная игра (создать комнату или войти по коду) ---
+  if (screen === 'arena_private') {
+    return (
+      <SafeAreaView style={[styles.container, styles.appBg]}>
+        <StatusBar style={skin.statusBar === 'light' ? 'light' : 'dark'} />
+        <ScrollView
+          style={styles.scrollFlex}
+          contentContainerStyle={[
+            styles.scrollPage,
+            { paddingVertical: layout.padH, paddingBottom: layout.padH + 16 }
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
+          <PageShell padH={layout.padH} maxWidth={layout.shellMax}>
+            <View style={styles.botSelectTopBarInner}>
+              <TouchableOpacity
+                style={styles.botSelectBackBtn}
+                onPress={() => setScreen('arena')}
+              >
+                <Text style={styles.botSelectBackBtnText}>← {tr('back')}</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={[styles.sectionHeader, { marginTop: layout.gap }]}>
+              <Text style={[styles.sectionTitle, layout.compact && styles.sectionTitleCompact]}>
+                🔒 {tr('privatePageTitle')}
               </Text>
-              <View style={[styles.choiceRow, { marginTop: 16 }]}>
-                <TouchableOpacity style={styles.choiceBtn} onPress={() => setPendingInvite(null)}>
-                  <Text style={styles.choiceText}>{tr('decline')}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.choiceBtn, { backgroundColor: ui.accent }]} onPress={handleAcceptInvite}>
-                  <Text style={[styles.choiceText, { color: ui.onAccent }]}>{tr('accept')}</Text>
+              <Text style={styles.sectionSubtitle}>{tr('privatePageSubtitle')}</Text>
+            </View>
+
+            {arenaStatusBlocks}
+
+            <SurfaceCard style={{ padding: layout.cardPad, marginBottom: layout.gap }}>
+              <TouchableOpacity
+                style={[
+                  styles.arenaModeTile,
+                  styles.arenaModeTileHero,
+                  roomsAtCap && styles.arenaModeTileDisabled
+                ]}
+                onPress={handleCreatePrivateRoom}
+                disabled={roomsAtCap}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.arenaModeEmoji}>🔒</Text>
+                <Text style={styles.arenaModeTitle}>{tr('createPrivateRoomBtn')}</Text>
+                <Text style={styles.arenaModeDesc}>{tr('createPrivateRoomHint')}</Text>
+              </TouchableOpacity>
+              {roomsAtCap && (
+                <Text style={[styles.infoBody, { marginTop: 12, color: ui.warning }]}>
+                  {tr('roomsCapHint')}
+                </Text>
+              )}
+            </SurfaceCard>
+
+            <SurfaceCard style={{ padding: layout.cardPad, marginBottom: 0 }}>
+              <Text style={styles.cardTitle}>{tr('enterByCode')}</Text>
+              <Text style={[styles.infoBody, { marginBottom: 12 }]}>
+                {tr('privateRoomsHidden')}
+              </Text>
+              <View style={[styles.arenaCodeRow, layout.mobile && styles.arenaCodeRowStack]}>
+                <TextInput
+                  style={[
+                    styles.arenaCodeInput,
+                    layout.mobile ? styles.arenaCodeInputStack : styles.arenaCodeInputFlex
+                  ]}
+                  placeholder={tr('codePlaceholder')}
+                  placeholderTextColor="#9ca3af"
+                  value={roomCodeInput}
+                  onChangeText={setRoomCodeInput}
+                  autoCapitalize="characters"
+                  maxLength={8}
+                />
+                <TouchableOpacity
+                  style={[styles.arenaCodeBtn, layout.mobile && styles.arenaCodeBtnStack]}
+                  onPress={handleJoinByCode}
+                >
+                  <Text style={styles.arenaCodeBtnText}>{tr('enter')}</Text>
                 </TouchableOpacity>
               </View>
+            </SurfaceCard>
+          </PageShell>
+        </ScrollView>
+
+        {settingsModal}
+        {inviteModal}
+      </SafeAreaView>
+    );
+  }
+
+  // --- Арена: открытые комнаты (создать свою или подключиться из списка) ---
+  if (screen === 'arena_open') {
+    const joinableRooms = publicRooms.filter((room) =>
+      !user || String(room.creatorId) !== String(user.id)
+    );
+    return (
+      <SafeAreaView style={[styles.container, styles.appBg]}>
+        <StatusBar style={skin.statusBar === 'light' ? 'light' : 'dark'} />
+        <ScrollView
+          style={styles.scrollFlex}
+          contentContainerStyle={[
+            styles.scrollPage,
+            { paddingVertical: layout.padH, paddingBottom: layout.padH + 16 }
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
+          <PageShell padH={layout.padH} maxWidth={layout.shellMax}>
+            <View style={styles.botSelectTopBarInner}>
+              <TouchableOpacity
+                style={styles.botSelectBackBtn}
+                onPress={() => setScreen('arena')}
+              >
+                <Text style={styles.botSelectBackBtnText}>← {tr('back')}</Text>
+              </TouchableOpacity>
             </View>
-          </View>
-        </Modal>
+
+            <View style={[styles.sectionHeader, { marginTop: layout.gap }]}>
+              <Text style={[styles.sectionTitle, layout.compact && styles.sectionTitleCompact]}>
+                🌐 {tr('openRooms')}
+              </Text>
+              <Text style={styles.sectionSubtitle}>{tr('openPageSubtitle')}</Text>
+            </View>
+
+            {arenaStatusBlocks}
+
+            <SurfaceCard style={{ padding: layout.cardPad, marginBottom: layout.gap }}>
+              <TouchableOpacity
+                style={[
+                  styles.arenaModeTile,
+                  styles.arenaModeTileHero,
+                  roomsAtCap && styles.arenaModeTileDisabled
+                ]}
+                onPress={handleCreateOpenRoom}
+                disabled={roomsAtCap}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.arenaModeEmoji}>🌐</Text>
+                <Text style={styles.arenaModeTitle}>{tr('createOpenRoomBtn')}</Text>
+                <Text style={styles.arenaModeDesc}>{tr('createOpenRoomHint')}</Text>
+              </TouchableOpacity>
+              {roomsAtCap && (
+                <Text style={[styles.infoBody, { marginTop: 12, color: ui.warning }]}>
+                  {tr('roomsCapHint')}
+                </Text>
+              )}
+            </SurfaceCard>
+
+            <SurfaceCard style={{ padding: layout.cardPad, marginBottom: 0 }}>
+              <Text style={styles.cardTitle}>{tr('openRooms')}</Text>
+              <Text style={[styles.infoBody, { marginBottom: 12 }]}>{tr('upTo10Rooms')}</Text>
+              {joinableRooms.length === 0 ? (
+                <View style={styles.arenaEmptyBox}>
+                  <Text style={styles.arenaEmptyText}>{tr('noOpenRooms')}</Text>
+                </View>
+              ) : (
+                joinableRooms.map((room) => (
+                  <View key={room.id} style={styles.arenaPlayerCard}>
+                    {room.creatorAvatar ? (
+                      <Image source={{ uri: room.creatorAvatar }} style={styles.arenaPlayerAvatar} />
+                    ) : (
+                      <View style={[styles.arenaPlayerAvatar, styles.avatarPlaceholder]}>
+                        <Text style={styles.profileHeroLetter}>
+                          {(room.creatorName || '?')[0].toUpperCase()}
+                        </Text>
+                      </View>
+                    )}
+                    <View style={styles.arenaPlayerInfo}>
+                      <Text style={styles.arenaPlayerName} numberOfLines={1}>
+                        {room.creatorName || tr('playerFallback')}
+                      </Text>
+                      <Text style={styles.arenaRoomMeta}>
+                        {tr('openRoomMeta', { count: room.playersCount || 1 })}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.arenaJoinBtn}
+                      onPress={() => handleJoinPublicRoom(room.id)}
+                    >
+                      <Text style={styles.arenaJoinBtnText}>{tr('enter')}</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))
+              )}
+            </SurfaceCard>
+          </PageShell>
+        </ScrollView>
+
+        {settingsModal}
+        {inviteModal}
       </SafeAreaView>
     );
   }
@@ -2718,12 +2863,14 @@ export default function App() {
                   >
                     <Text style={styles.headerIconBtnText}>⚙️</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.lobbyLogoutBtn}
-                    onPress={handleLogout}
-                  >
-                    <Text style={styles.lobbyLogoutBtnText}>{tr('logoutAccount')}</Text>
-                  </TouchableOpacity>
+                  {!IS_VK_ENTRY && (
+                    <TouchableOpacity
+                      style={styles.lobbyLogoutBtn}
+                      onPress={handleLogout}
+                    >
+                      <Text style={styles.lobbyLogoutBtnText}>{tr('logoutAccount')}</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               </View>
 
@@ -3010,9 +3157,11 @@ export default function App() {
               )}
             </SurfaceCard>
 
-            <TouchableOpacity style={styles.profileLogoutBtn} onPress={handleLogout}>
-              <Text style={styles.profileLogoutBtnText}>{tr('logoutAccount')}</Text>
-            </TouchableOpacity>
+            {!IS_VK_ENTRY && (
+              <TouchableOpacity style={styles.profileLogoutBtn} onPress={handleLogout}>
+                <Text style={styles.profileLogoutBtnText}>{tr('logoutAccount')}</Text>
+              </TouchableOpacity>
+            )}
           </PageShell>
         </ScrollView>
       </SafeAreaView>
@@ -5867,6 +6016,34 @@ function createStyles(skin) {
     color: u.textSecondary,
     marginTop: 4,
     textAlign: 'center'
+  },
+  // Плитки-ссылки «Приватная (по коду)» / «Открытая (в списке)»: горизонтальная
+  // раскладка, подпись одной строкой — надписи выровнены по вертикали
+  arenaModeNavTile: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: u.surface,
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderWidth: 1.5,
+    borderColor: u.surfaceBorder,
+    gap: 10
+  },
+  arenaModeNavEmoji: {
+    fontSize: 22
+  },
+  arenaModeNavTitle: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '800',
+    color: u.textPrimary
+  },
+  arenaModeNavChevron: {
+    fontSize: 22,
+    lineHeight: 24,
+    color: u.textSecondary,
+    fontWeight: '600'
   },
   arenaWaitingCard: {
     flexDirection: 'row',

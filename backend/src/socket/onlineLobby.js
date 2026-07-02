@@ -120,6 +120,7 @@ class OnlineLobbyManager {
         isPrivate: false,
         creatorId: room.creator.userId,
         creatorName: room.creator.nickname,
+        creatorAvatar: room.creator.avatarUrl || null,
         playersCount: room.p2Joined ? 2 : 1,
         p1Name: room.creator.nickname,
         p2Name: room.p2Joined ? room.joiner?.nickname : null
