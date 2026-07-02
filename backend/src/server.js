@@ -85,12 +85,15 @@ const docsStaticPath = path.join(__dirname, '../../docs');
 // Bot avatars (public) — must be registered before SPA fallback
 app.use('/js/bots', express.static(botsStaticPath));
 app.use('/v2/js/bots', express.static(botsStaticPath));
-// Инструкция по интеграции в VK — публичная, по прямому URL
-// (регистрируется ДО requireDocsAuth, остальные доки остаются закрытыми)
-app.get('/docs/VK-INTEGRATION.md', (req, res) => {
-  res.type('text/plain; charset=utf-8');
-  res.sendFile(path.join(docsStaticPath, 'VK-INTEGRATION.md'));
-});
+// Публичные инструкции — доступны по прямому URL без авторизации
+// (регистрируются ДО requireDocsAuth, остальные доки остаются закрытыми)
+const PUBLIC_DOCS = ['VK-INTEGRATION.md', 'DIARY-DEPLOY.md', 'LANGUAGEFLASH-DEPLOY.md'];
+for (const doc of PUBLIC_DOCS) {
+  app.get(`/docs/${doc}`, (req, res) => {
+    res.type('text/plain; charset=utf-8');
+    res.sendFile(path.join(docsStaticPath, doc));
+  });
+}
 // Docs (protected) — must be registered before SPA fallback
 app.use('/docs', requireDocsAuth, express.static(docsStaticPath));
 app.use('/', express.static(clientDistPath));
