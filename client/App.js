@@ -425,6 +425,15 @@ const brandStyles = StyleSheet.create({
     marginTop: 8,
   },
   loginBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  loginBtnVk: {
+    alignSelf: 'stretch',
+    backgroundColor: '#0077FF',
+    paddingVertical: 16,
+    borderRadius: 16,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  loginBtnVkText: { color: '#fff', fontSize: 16, fontWeight: '800' },
   loginBtnGuest: {
     alignSelf: 'stretch',
     backgroundColor: 'transparent',
@@ -1703,6 +1712,12 @@ export default function App() {
     }
   };
 
+  const handleVKIDLogin = () => {
+    if (typeof window !== 'undefined') {
+      window.location.href = `${BASE_URL}/api/v2/auth/vkid`;
+    }
+  };
+
   const handleDevLogin = async () => {
     if (typeof window !== 'undefined') {
       await storage.removeItem('logout_flag');
@@ -2409,6 +2424,12 @@ export default function App() {
                 {isWebPlatform && (
                   <TouchableOpacity style={brandStyles.loginBtn} onPress={handleLogin}>
                     <Text style={brandStyles.loginBtnText}>{tr('loginGoogle')}</Text>
+                  </TouchableOpacity>
+                )}
+
+                {isWebPlatform && !IS_VK_ENTRY && (
+                  <TouchableOpacity style={brandStyles.loginBtnVk} onPress={handleVKIDLogin}>
+                    <Text style={brandStyles.loginBtnVkText}>{tr('loginVkId')}</Text>
                   </TouchableOpacity>
                 )}
 

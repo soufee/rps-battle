@@ -17,6 +17,8 @@ import { authenticateToken, requireDocsAuth } from './middleware/auth.js';
 import {
   loginGoogle,
   googleCallback,
+  loginVKID,
+  vkidCallback,
   refresh,
   status,
   devLogin,
@@ -62,6 +64,8 @@ app.get('/api/v2/health', (req, res) => {
 app.get('/api/v2/auth/google', loginGoogle);
 app.get('/api/v2/auth/google/callback', googleCallback);
 app.get('/auth/google/callback', googleCallback);
+app.get('/api/v2/auth/vkid', loginVKID);
+app.get('/auth/vk/callback', vkidCallback);
 app.get('/api/v2/auth/dev', devLogin);
 app.post('/api/v2/auth/refresh', refresh);
 app.get('/api/v2/auth/status', authenticateToken, status);

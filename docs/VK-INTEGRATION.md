@@ -123,6 +123,28 @@ systemctl restart rps-v2-backend
 После заполнения отправьте на модерацию и по одобрении переключите приложение
 в состояние «Видно всем».
 
+## Вход через VK ID на обычном сайте (не в iframe VK)
+
+На rps-battles.com рядом с Google есть кнопка **«Войти через VK ID»**
+(OAuth 2.1 + PKCE, эндпоинты `id.vk.com`). Аккаунт объединён с мини-приложением:
+один VK-пользователь — один и тот же игрок и в вебе, и внутри VK
+(`platform='vk'`, `externalId=vk_user_id`).
+
+**Что нужно включить в консоли VK (один раз):**
+в настройках приложения найдите раздел VK ID / «Доверенный Redirect URL»
+и добавьте:
+
+```
+https://rps-battles.com/auth/vk/callback
+```
+
+Пока адрес не добавлен, id.vk.com на шаге авторизации показывает ошибку
+(«Не удалось загрузить» / Error loading).
+
+Флоу: `/api/v2/auth/vkid` → `id.vk.com/authorize` (PKCE, state) →
+`/auth/vk/callback` → обмен кода на токен (`id.vk.com/oauth2/auth`, без
+client_secret) → `oauth2/user_info` → JWT-токены игры, как у Google-входа.
+
 ## Как это устроено технически (справка)
 
 - VK открывает `https://rps-battles.com/vk` в iframe и добавляет к URL параметры

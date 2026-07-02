@@ -211,6 +211,138 @@ export async function googleCallback(req, res) {
   }
 }
 
+// --- VK ID (OAuth 2.1 + PKCE) — вход через VK-аккаунт на обычном вебе ---
+// Флоу: /api/v2/auth/vkid → id.vk.com/authorize → /auth/vk/callback →
+// обмен кода (без client_secret, PKCE) → user_info → JWT как у Google.
+const VKID_AUTH_URL = 'https://id.vk.com/authorize';
+const VKID_TOKEN_URL = 'https://id.vk.com/oauth2/auth';
+const VKID_USER_URL = 'https://id.vk.com/oauth2/user_info';
+const VKID_REDIRECT_URI = `${BASE_URL}/auth/vk/callback`;
+
+function signVkidVerifier(verifier) {
+  return crypto.createHmac('sha256', JWT_SECRET).update('vkid:' + verifier).digest('hex').slice(0, 24);
+}
+
+export async function loginVKID(req, res) {
+  const clientId = process.env.VK_APP_ID;
+  if (!clientId) {
+    return res.status(400).json({ error: 'VK ID is not configured on server (VK_APP_ID)' });
+  }
+
+  const state = createOAuthState();
+  // PKCE: verifier переживает редирект в подписанной httpOnly-куке
+  const verifier = crypto.randomBytes(48).toString('base64url');
+  res.cookie('vkid_pkce', `${verifier}.${signVkidVerifier(verifier)}`, v2CookieOptions());
+
+  const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
+  const params = new URLSearchParams({
+    response_type: 'code',
+    client_id: clientId,
+    scope: 'vkid.personal_info',
+    redirect_uri: VKID_REDIRECT_URI,
+    state,
+    code_challenge: challenge,
+    code_challenge_method: 'S256'
+  });
+  res.redirect(`${VKID_AUTH_URL}?${params}`);
+}
+
+export async function vkidCallback(req, res) {
+  try {
+    const { code, state, device_id: deviceId, error: oauthError, error_description: errorDesc } = req.query;
+    if (oauthError) {
+      throw new Error(errorDesc || String(oauthError));
+    }
+    if (!code) {
+      throw new Error('Отсутствует код авторизации от VK ID');
+    }
+    if (!verifyOAuthState(state)) {
+      throw new Error('Некорректный state (возможна подмена или устаревшая сессия)');
+    }
+
+    const raw = (req.cookies && req.cookies.vkid_pkce) || '';
+    const dot = raw.lastIndexOf('.');
+    const verifier = dot > 0 ? raw.slice(0, dot) : '';
+    const sig = dot > 0 ? raw.slice(dot + 1) : '';
+    if (!verifier || sig !== signVkidVerifier(verifier)) {
+      throw new Error('Сессия авторизации истекла — попробуйте войти ещё раз');
+    }
+    const clearOpts = { path: '/' };
+    if (process.env.COOKIE_DOMAIN) clearOpts.domain = process.env.COOKIE_DOMAIN;
+    res.clearCookie('vkid_pkce', clearOpts);
+
+    const tokenRes = await fetch(VKID_TOKEN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code: String(code),
+        code_verifier: verifier,
+        client_id: process.env.VK_APP_ID,
+        device_id: String(deviceId || ''),
+        redirect_uri: VKID_REDIRECT_URI,
+        state: String(state)
+      })
+    });
+    const tokenData = await tokenRes.json();
+    if (!tokenRes.ok || tokenData.error || !tokenData.access_token) {
+      console.error('VK ID token exchange failed:', tokenData);
+      throw new Error(tokenData.error_description || tokenData.error || 'VK ID token exchange failed');
+    }
+
+    // Имя/аватар — косметика: если user_info недоступен, входим по user_id из токена
+    let vkUser = {};
+    try {
+      const userRes = await fetch(VKID_USER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: process.env.VK_APP_ID,
+          access_token: tokenData.access_token
+        })
+      });
+      const userData = await userRes.json();
+      if (userRes.ok && userData.user) vkUser = userData.user;
+    } catch (e) {
+      console.warn('VK ID user_info failed:', e.message);
+    }
+
+    const externalId = String(vkUser.user_id || tokenData.user_id || '');
+    if (!externalId) {
+      throw new Error('VK ID не вернул идентификатор пользователя');
+    }
+
+    // Тот же platform/externalId, что и у входа из VK Mini Apps:
+    // один VK-аккаунт = один и тот же игрок в игре и в вебе
+    let user = await prisma.user.findFirst({ where: { externalId, platform: 'vk' } });
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          nickname: `${vkUser.first_name || 'VK'}_${vkUser.last_name || 'User'}_${crypto.randomBytes(3).toString('hex')}`,
+          avatarUrl: vkUser.avatar || null,
+          platform: 'vk',
+          externalId,
+          stats: { create: {} }
+        }
+      });
+    }
+
+    if (user.isBanned && user.bannedUntil && new Date() < user.bannedUntil) {
+      return res.status(403).send(`Вы забанены до ${user.bannedUntil.toLocaleString()}. Причина: ${user.bannedReason}`);
+    }
+
+    const { accessToken, refreshToken } = generateTokens(user);
+    res.cookie('token', accessToken, {
+      ...v2CookieOptions(),
+      maxAge: 30 * 24 * 60 * 60 * 1000
+    });
+    res.redirect(`/?token=${encodeURIComponent(accessToken)}&refreshToken=${encodeURIComponent(refreshToken)}`);
+  } catch (error) {
+    console.error('VK ID callback error:', error);
+    res.status(500).send(`Ошибка входа через VK ID: ${error.message}`);
+  }
+}
+
 export async function refresh(req, res) {
   const { refreshToken } = req.body;
   if (!refreshToken) {
