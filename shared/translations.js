@@ -42,6 +42,8 @@ export const TRANSLATIONS = {
     returnToLobby: "To Lobby",
     returnToArena: "To Arena",
     returnToTower: "To Tower",
+    towerNextOpponent: "Next opponent",
+    towerReplay: "Play again",
 
     // Settings Modal
     settingsTitle: "Game Settings",
@@ -356,6 +358,8 @@ export const TRANSLATIONS = {
     returnToLobby: "В лобби",
     returnToArena: "В арену",
     returnToTower: "В турнир",
+    towerNextOpponent: "Следующий соперник",
+    towerReplay: "Переиграть",
 
     settingsTitle: "Настройки игры",
     selectSkin: "Визуальная тема",
@@ -659,6 +663,8 @@ export const TRANSLATIONS = {
     returnToLobby: "Au Lobby",
     returnToArena: "À l'Arène",
     returnToTower: "À la Tour",
+    towerNextOpponent: "Adversaire suivant",
+    towerReplay: "Rejouer",
 
     settingsTitle: "Paramètres du Jeu",
     selectSkin: "Thème Visuel",
@@ -902,6 +908,8 @@ export const TRANSLATIONS = {
     returnToLobby: "Zum Lobby",
     returnToArena: "Zur Arena",
     returnToTower: "Zum Turm",
+    towerNextOpponent: "Nächster Gegner",
+    towerReplay: "Erneut spielen",
 
     settingsTitle: "Spieleinstellungen",
     selectSkin: "Visuelles Thema",
@@ -1145,6 +1153,8 @@ export const TRANSLATIONS = {
     returnToLobby: "Al Vestíbulo",
     returnToArena: "A la Arena",
     returnToTower: "A la Torre",
+    towerNextOpponent: "Siguiente rival",
+    towerReplay: "Volver a jugar",
 
     settingsTitle: "Ajustes del Juego",
     selectSkin: "Tema Visual",
@@ -1388,6 +1398,8 @@ export const TRANSLATIONS = {
     returnToLobby: "Lobiye Dön",
     returnToArena: "Arenaya Dön",
     returnToTower: "Kuleye Dön",
+    towerNextOpponent: "Sonraki rakip",
+    towerReplay: "Tekrar oyna",
 
     settingsTitle: "Oyun Ayarları",
     selectSkin: "Görsel Tema",
@@ -1631,6 +1643,8 @@ export const TRANSLATIONS = {
     returnToLobby: "إلى الردهة",
     returnToArena: "إلى الساحة",
     returnToTower: "إلى البرج",
+    towerNextOpponent: "الخصم التالي",
+    towerReplay: "العب مجددًا",
 
     settingsTitle: "إعدادات اللعبة",
     selectSkin: "المظهر البصري",
@@ -1874,6 +1888,8 @@ export const TRANSLATIONS = {
     returnToLobby: "回大厅",
     returnToArena: "回竞技场",
     returnToTower: "回高塔",
+    towerNextOpponent: "下一位对手",
+    towerReplay: "再玩一次",
 
     settingsTitle: "游戏设置",
     selectSkin: "视觉皮肤",

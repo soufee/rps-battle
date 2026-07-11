@@ -112,6 +112,72 @@ const LANG_NAMES = {
   zh: '中文'
 };
 
+const TOURNAMENT_LADDER_V1 = [
+  'rabbit',
+  'raccoon',
+  'fox',
+  'owl',
+  'lion',
+  'wolf',
+  'hedgehog',
+  'raven',
+  'kimi_2_5',
+  'codex_5_3_medium',
+  'composer_2_5',
+  'gemini_3_1_pro',
+  'gemini_3_5_flash',
+  'gpt_5_5',
+  'grok_apex',
+  'grok_build_0_1',
+  'haiku_4_5',
+  'opus_4_7_flash',
+  'opus_4_8_high',
+  'sonnet_4_6_medium'
+];
+
+const TOURNAMENT_LADDER_V2 = [
+  'grok_build_0_1',
+  'gemini_3_1_pro',
+  'sonnet_4_6_medium',
+  'haiku_4_5',
+  'grok_apex',
+  'rabbit',
+  'kimi_2_5',
+  'lion',
+  'codex_5_3_medium',
+  'raccoon',
+  'raven',
+  'fox',
+  'gpt_5_5',
+  'opus_4_8_high',
+  'hedgehog',
+  'wolf',
+  'gemini_3_5_flash',
+  'owl',
+  'opus_4_7_flash',
+  'composer_2_5'
+];
+
+function getTournamentLadder(version) {
+  return version === 2 ? TOURNAMENT_LADDER_V2 : TOURNAMENT_LADDER_V1;
+}
+
+function getNextTournamentBotId(version, botId) {
+  const ladder = getTournamentLadder(version);
+  const currentIndex = ladder.indexOf(botId);
+  return currentIndex >= 0 ? ladder[currentIndex + 1] ?? null : null;
+}
+
+function getTournamentResultAction(version, botId, winner) {
+  if (winner === COMPUTER) {
+    return 'replay';
+  }
+  if (winner === PLAYER && getNextTournamentBotId(version, botId)) {
+    return 'next';
+  }
+  return null;
+}
+
 function resolveAssetUrl(path) {
   if (!path) return null;
   if (String(path).startsWith('http')) return path;
@@ -2003,8 +2069,9 @@ export default function App() {
   };
 
   // --- Game actions ---
-  const handleStartBotGame = (botIdOverride) => {
+  const handleStartBotGame = (botIdOverride, options = {}) => {
     const botId = botIdOverride || selectedBotId;
+    setIsTournamentActive(options.isTournament === true);
     setSelectedBotId(botId);
     setGameMode('pve');
     const freshGame = initGame(botId);
@@ -2019,6 +2086,22 @@ export default function App() {
     setSelectedPiece(null);
     setValidMoves([]);
     setRatingUpdate(null);
+  };
+
+  const handleReplayTournamentGame = () => {
+    const botId = game?.botId;
+    if (!botId) {
+      return;
+    }
+    handleStartBotGame(botId, { isTournament: true });
+  };
+
+  const handleNextTournamentGame = () => {
+    const nextBotId = getNextTournamentBotId(user?.stats?.tournamentVersion, game?.botId);
+    if (!nextBotId) {
+      return;
+    }
+    handleStartBotGame(nextBotId, { isTournament: true });
   };
 
   const handleSetupTimeout = () => {
@@ -3434,62 +3517,13 @@ export default function App() {
     // Три колонки по уровням — только на широких экранах; на телефоне сетка 2 колонки
     const isWeb = isWide;
 
-    const TOURNAMENT_LADDER_V1 = [
-      'rabbit',
-      'raccoon',
-      'fox',
-      'owl',
-      'lion',
-      'wolf',
-      'hedgehog',
-      'raven',
-      'kimi_2_5',
-      'codex_5_3_medium',
-      'composer_2_5',
-      'gemini_3_1_pro',
-      'gemini_3_5_flash',
-      'gpt_5_5',
-      'grok_apex',
-      'grok_build_0_1',
-      'haiku_4_5',
-      'opus_4_7_flash',
-      'opus_4_8_high',
-      'sonnet_4_6_medium'
-    ];
-
-    const TOURNAMENT_LADDER_V2 = [
-      'grok_build_0_1',
-      'gemini_3_1_pro',
-      'sonnet_4_6_medium',
-      'haiku_4_5',
-      'grok_apex',
-      'rabbit',
-      'kimi_2_5',
-      'lion',
-      'codex_5_3_medium',
-      'raccoon',
-      'raven',
-      'fox',
-      'gpt_5_5',
-      'opus_4_8_high',
-      'hedgehog',
-      'wolf',
-      'gemini_3_5_flash',
-      'owl',
-      'opus_4_7_flash',
-      'composer_2_5'
-    ];
-
-    const TOURNAMENT_LADDER = (user?.stats?.tournamentVersion === 2)
-      ? TOURNAMENT_LADDER_V2
-      : TOURNAMENT_LADDER_V1;
+    const TOURNAMENT_LADDER = getTournamentLadder(user?.stats?.tournamentVersion);
     
     const currentStage = user?.stats?.tournamentStage ?? 0;
     const isCompleted = currentStage >= TOURNAMENT_LADDER.length;
 
     const handleChallengeTournamentBot = (botId) => {
-      setIsTournamentActive(true);
-      handleStartBotGame(botId);
+      handleStartBotGame(botId, { isTournament: true });
     };
 
     const renderBotCard = (bot) => {
@@ -4100,29 +4134,88 @@ export default function App() {
                 <Text style={styles.rematchBtnText}>⚔️⏳ {tr('rematch')}</Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity
-              style={styles.lobbyReturnBtn}
-              onPress={() => {
-                const wasPvp = gameMode === 'pvp';
-                setGame(null);
-                setGameMode('pve');
-                setPvpRole(null);
-                pvpRoleRef.current = null;
-                if (wasPvp) {
-                  setScreen('arena');
-                } else if (isTournamentActive) {
-                  setScreen('bot_select');
-                  setBotSelectTab('tournament');
-                } else {
-                  setScreen('lobby');
-                }
-                socketRef.current?.emit('lobby:enter');
-              }}
+            <View
+              style={
+                isTournamentActive
+                && gameMode === 'pve'
+                && getTournamentResultAction(
+                  user?.stats?.tournamentVersion,
+                  game.botId,
+                  game.winner
+                )
+                  ? styles.finishedActionRow
+                  : null
+              }
             >
-              <Text style={styles.lobbyReturnBtnText}>
-                {gameMode === 'pvp' ? tr('returnToArena') : (isTournamentActive ? tr('returnToTower') : tr('returnToLobby'))}
-              </Text>
-            </TouchableOpacity>
+              {isTournamentActive
+                && gameMode === 'pve'
+                && getTournamentResultAction(
+                  user?.stats?.tournamentVersion,
+                  game.botId,
+                  game.winner
+                ) === 'next'
+                && (
+                  <TouchableOpacity
+                    style={[styles.finishedActionBtn, styles.nextTournamentBtn]}
+                    onPress={handleNextTournamentGame}
+                    accessibilityRole="button"
+                    accessibilityLabel={tr('towerNextOpponent')}
+                  >
+                    <Text style={styles.finishedActionBtnText}>{tr('towerNextOpponent')}</Text>
+                  </TouchableOpacity>
+                )}
+              {isTournamentActive
+                && gameMode === 'pve'
+                && getTournamentResultAction(
+                  user?.stats?.tournamentVersion,
+                  game.botId,
+                  game.winner
+                ) === 'replay'
+                && (
+                  <TouchableOpacity
+                    style={[styles.finishedActionBtn, styles.replayTournamentBtn]}
+                    onPress={handleReplayTournamentGame}
+                    accessibilityRole="button"
+                    accessibilityLabel={tr('towerReplay')}
+                  >
+                    <Text style={styles.finishedActionBtnText}>{tr('towerReplay')}</Text>
+                  </TouchableOpacity>
+                )}
+              <TouchableOpacity
+                style={[
+                  styles.lobbyReturnBtn,
+                  isTournamentActive
+                    && gameMode === 'pve'
+                    && getTournamentResultAction(
+                      user?.stats?.tournamentVersion,
+                      game.botId,
+                      game.winner
+                    )
+                    && styles.finishedActionBtn
+                ]}
+                onPress={() => {
+                  const wasPvp = gameMode === 'pvp';
+                  setGame(null);
+                  setGameMode('pve');
+                  setPvpRole(null);
+                  pvpRoleRef.current = null;
+                  if (wasPvp) {
+                    setScreen('arena');
+                  } else if (isTournamentActive) {
+                    setScreen('bot_select');
+                    setBotSelectTab('tournament');
+                  } else {
+                    setScreen('lobby');
+                  }
+                  socketRef.current?.emit('lobby:enter');
+                }}
+                accessibilityRole="button"
+              >
+                <Text style={styles.lobbyReturnBtnText}>
+                  {gameMode === 'pvp' ? tr('returnToArena') : (isTournamentActive ? tr('returnToTower') : tr('returnToLobby'))}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </SurfaceCard>
         )}
       </View>
@@ -5862,6 +5955,33 @@ function createStyles(skin) {
     color: u.onAccent,
     fontWeight: '800',
     fontSize: 15
+  },
+  finishedActionRow: {
+    flexDirection: 'row',
+    alignSelf: 'stretch',
+    gap: 10,
+    marginTop: 12
+  },
+  finishedActionBtn: {
+    flex: 1,
+    minHeight: 48,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  finishedActionBtnText: {
+    color: u.onAccent,
+    fontWeight: '800',
+    fontSize: 14,
+    textAlign: 'center'
+  },
+  nextTournamentBtn: {
+    backgroundColor: u.success
+  },
+  replayTournamentBtn: {
+    backgroundColor: u.success
   },
   lobbyReturnBtn: {
     backgroundColor: u.accent,

@@ -6,10 +6,10 @@ services:
     container_name: rps_mysql_v2
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: rps_root_sec_password_2026
-      MYSQL_DATABASE: rps_db_v2
-      MYSQL_USER: rps_user_v2
-      MYSQL_PASSWORD: rps_pass_sec_v2_2026
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:-rps_root_sec_password_2026}"
+      MYSQL_DATABASE: "${MYSQL_DATABASE:-rps_db_v2}"
+      MYSQL_USER: "${MYSQL_USER:-rps_user_v2}"
+      MYSQL_PASSWORD: "${MYSQL_PASSWORD:-rps_pass_sec_v2_2026}"
     ports:
       - "127.0.0.1:3306:3306"
     volumes:
