@@ -13,6 +13,7 @@ node_modules/
 
 # Build files
 dist/
+dist-*/
 web-build/
 build/
 out/
@@ -27,10 +28,8 @@ Thumbs.db
 # Log files
 *.log
 
-# Server scripts
-deploy.sh
-
-
+# Legacy server-only deploy path (canonical script is scripts/deploy.sh)
+/deploy.sh
 
 # Claude Code local config
 .claude/
@@ -39,3 +38,6 @@ deploy.sh
 *.zip
 dist-backup*
 ._*
+
+# Local backup branches / WIP
+*.local
