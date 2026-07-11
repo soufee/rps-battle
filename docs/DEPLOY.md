@@ -8,11 +8,11 @@ local laptop  →  git push origin main  →  GitHub
                      ┌──────────────────────┴──────────────────────┐
                      ▼                                             ▼
           GitHub Actions (optional)                    Server timer (always on)
-          SSH → scripts/deploy.sh                      every 1 min: fetch main
+          SSH → scripts/deploy.sh                      every 10 min: fetch main
                                                        if new → scripts/deploy.sh
 ```
 
-**Active now:** the Hetzner host polls `origin/main` every minute (`rps-auto-deploy.timer`) and runs the deploy script when the branch moves. You can develop locally, push to `main`, and the site updates within ~1–3 minutes (plus build time).
+**Active now:** the Hetzner host polls `origin/main` every 10 minutes (`rps-auto-deploy.timer`) and runs the deploy script when the branch moves. You can develop locally, push to `main`, and the site updates within ~10–15 minutes (plus build time).
 
 **Optional:** GitHub Actions workflow `.github/workflows/deploy.yml` can deploy immediately on push once secrets are set (see below).
 
