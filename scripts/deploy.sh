@@ -28,6 +28,7 @@ if [ ! -f .env ]; then
   exit 1
 fi
 npm install
+npx playwright install chromium
 npx prisma generate
 "$APP_ROOT/scripts/prisma-migrate-check.sh"
 
