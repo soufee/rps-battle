@@ -203,8 +203,8 @@ function getTournamentResultAction(version, botId, winner) {
   if (winner === COMPUTER) {
     return 'replay';
   }
-  if (winner === PLAYER && getNextTournamentBotId(version, botId)) {
-    return 'next';
+  if (winner === PLAYER) {
+    return getNextTournamentBotId(version, botId) ? 'next' : 'completed';
   }
   return null;
 }
@@ -1039,28 +1039,42 @@ export default function App() {
   // Sync battle logs for Playwright
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      window.__battleLogs = battleLogs;
+      // Keep a plain string array for MatchRunner scrape
+      window.__battleLogs = battleLogs.map((m) => (typeof m === 'string' ? m : String(m)));
     }
   }, [battleLogs]);
 
-  // Auto-start championship match
+  // Auto-start championship match (Playwright MatchRunner loads ?championship=true)
   useEffect(() => {
-    if (isChampMode && user && screen !== 'game') {
-      setTimeout(() => {
+    if (!isChampMode || !user || screen === 'game') return undefined;
+
+    const startTimer = setTimeout(() => {
+      try {
         setGameMode('pve');
         const freshGame = initGame(topBotParam);
         startDevMatch(freshGame, topBotParam, bottomBotParam);
         setGame(freshGame);
         setScreen('game');
         setBattleLogs(['🎮 Матч чемпионата начался!']);
-        
+
         if (typeof window !== 'undefined') {
+          if (!window.gameCore) {
+            window.gameCore = { gameState: null, endGame: () => {} };
+          }
           window.gameCore.gameState = freshGame;
+          window.__matchStarted = true;
+          window.__matchBoardReady = false;
+          window.__matchResult = null;
+          window.__battleLogs = ['🎮 Матч чемпионата начался!'];
         }
-        
+
         triggerBotTurn(freshGame);
-      }, 500);
-    }
+      } catch (err) {
+        console.error('[championship] failed to start match:', err);
+      }
+    }, 300);
+
+    return () => clearTimeout(startTimer);
   }, [isChampMode, user, screen]);
 
   // Фоновая музыка: лобби-эмбиент вне боя, боевой эмбиент в матче
@@ -1423,8 +1437,11 @@ export default function App() {
   const renderCartoonPiece = renderSkinPiece;
 
   // Socket.IO PvP Connection & Event Listeners
+  // Championship bot matches use a mock token and must not connect —
+  // INVALID_TOKEN would call handleLogout() and flash the auth screen
+  // over the final board (breaking match screenshots).
   useEffect(() => {
-    if (token) {
+    if (token && !isChampMode) {
       console.log('Connecting to Socket.IO at:', BASE_URL);
       const socket = io(BASE_URL, {
         path: '/v2/socket.io',
@@ -1963,6 +1980,9 @@ export default function App() {
   };
 
   const handleLogout = async () => {
+    // Never tear down championship UI mid-match (screenshots need the board)
+    if (isChampMode) return;
+
     await storage.removeItem('token');
     await storage.removeItem('refreshToken');
     if (Platform.OS === 'web') {
@@ -2451,7 +2471,7 @@ export default function App() {
     }
     
     if (updatedGame.gameOver) {
-      handleGameOver(updatedGame.winner, updatedGame.endReason);
+      handleGameOver(updatedGame.winner, updatedGame.endReason, updatedGame);
       return;
     }
     
@@ -2543,7 +2563,7 @@ export default function App() {
       setGame(updatedGame);
       
       if (updatedGame.gameOver) {
-        handleGameOver(updatedGame.winner, updatedGame.endReason);
+        handleGameOver(updatedGame.winner, updatedGame.endReason, updatedGame);
         return;
       }
       
@@ -2557,7 +2577,7 @@ export default function App() {
       setGame(updatedGame);
       
       if (updatedGame.gameOver) {
-        handleGameOver(updatedGame.winner, updatedGame.endReason);
+        handleGameOver(updatedGame.winner, updatedGame.endReason, updatedGame);
         return;
       }
       
@@ -2570,19 +2590,29 @@ export default function App() {
     }
   };
 
-  const handleGameOver = async (winner, reason) => {
-    // Expose final state to window before doing anything
+  const handleGameOver = async (winner, reason, finalGame = null) => {
+    // Prefer the finished board state passed from processMoveResult —
+    // React's `game` closure can still be one tick behind.
+    const gs = finalGame || game;
     if (typeof window !== 'undefined' && window.gameCore) {
-      window.gameCore.gameState = game;
+      window.gameCore.gameState = gs;
+    }
+    if (finalGame) {
+      setGame({ ...finalGame });
+      setScreen('game');
     }
 
-    if (isChampMode || (game && game.devMode)) {
-      // Just log the result and return.
+    if (isChampMode || (gs && gs.devMode)) {
+      // Keep the finished board on screen for MatchRunner screenshots.
       const playerWon = winner === PLAYER;
       const isDraw = winner === 'draw';
       const resultText = isDraw ? 'Ничья' : (playerWon ? 'Победа низа (PLAYER)' : 'Победа верха (COMPUTER)');
       let desc = `Игра окончена: ${resultText}`;
+      if (reason) desc += ` (${reason})`;
       addLog(desc);
+      if (typeof window !== 'undefined') {
+        window.__matchBoardReady = true;
+      }
       return;
     }
 
@@ -2624,7 +2654,7 @@ export default function App() {
     }
 
     const resultType = isDraw ? 'draw' : (playerWon ? 'win' : 'lose');
-    const botId = game?.botId;
+    const botId = gs?.botId;
     setRatingUpdate(null);
     await updateStatsOnServer(resultType, botId);
     if (token) {
@@ -4004,6 +4034,10 @@ export default function App() {
     const boardBlock = (
       <SurfaceCard style={[styles.boardCard, { padding: layout.cardPad }]}>
         <View
+          // Used by championship MatchRunner to screenshot the final board
+          testID="game-board"
+          nativeID="game-board"
+          accessibilityLabel="game-board"
           style={[
             styles.board,
             {
@@ -4294,7 +4328,8 @@ export default function App() {
                 no_moves: tr('reasonNoMoves'),
                 disconnect_timeout: tr('reasonDisconnectTimeout'),
                 turn_timeout: tr('reasonTurnTimeout'),
-                no_captures_draw: tr('reasonDrawNoCapture')
+                no_captures_draw: tr('reasonDrawNoCapture'),
+                mutual_stalemate: tr('reasonMutualStalemate')
               }[game.endReason] || ''}
             </Text>
             {gameMode === 'pvp' && ratingUpdate !== null && (
@@ -4310,6 +4345,21 @@ export default function App() {
                 <Text style={styles.rematchBtnText}>⚔️⏳ {tr('rematch')}</Text>
               </TouchableOpacity>
             )}
+            {isTournamentActive
+              && gameMode === 'pve'
+              && getTournamentResultAction(
+                user?.stats?.tournamentVersion,
+                game.botId,
+                game.winner
+              ) === 'completed' && (
+                <SurfaceCard style={[styles.tournamentWinCard, { marginTop: 16, marginBottom: 16 }]}>
+                  <Text style={styles.tournamentWinEmoji}>👑</Text>
+                  <Text style={styles.tournamentWinTitle}>{tr('congrats')}</Text>
+                  <Text style={styles.tournamentWinSubtitle}>
+                    {tr('towerCompleteGameOver')}
+                  </Text>
+                </SurfaceCard>
+              )}
             <View
               style={
                 isTournamentActive

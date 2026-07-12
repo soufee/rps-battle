@@ -998,6 +998,55 @@ const aiEngine = {
     /**
      * Улучшенная функция оценки хода
      */
+    /**
+     * Проверяет, проигрывает ли бот (меньше боевых фигур).
+     * Если да — ничья для него выгодна, и draw-pressure НЕ применяется.
+     */
+    isLosingPosition(gameState) {
+        const aiCombat = gameState.aiPieces.filter(p =>
+            !p.removed && p.type === 'piece' && !p.immobilized
+        ).length;
+        const playerCombat = gameState.playerPieces.filter(p =>
+            !p.removed && p.type === 'piece' && !p.immobilized
+        ).length;
+        // Считаем проигрышной позицией разницу ≥ 2 фигур не в пользу бота
+        return playerCombat - aiCombat >= 2;
+    },
+
+    /**
+     * Бонус/штраф за приближение к ничье (ходы без взятия).
+     * Заставляет ботов атаковать агрессивнее, если ничья приближается,
+     * но только если позиция бота не проигрышная (тогда ничья выгодна).
+     */
+    getDrawPressureBonus(moveData, gameState) {
+        const movesWithout = gameState.movesWithoutCapture || 0;
+        const drawLimit = (GAME_CONFIG.GAME && GAME_CONFIG.GAME.DRAW_NO_CAPTURE_LIMIT) || 20;
+        const ratio = movesWithout / drawLimit;
+
+        // Если ещё далеко от лимита — нет давления
+        if (ratio < 0.5) return 0;
+
+        // Если позиция проигрышная — ничья выгодна, не давим
+        if (this.isLosingPosition(gameState)) return 0;
+
+        const { piece, row, col } = moveData;
+        const target = gameState.board[row][col];
+        const isAttack = !!(target && target.owner === PLAYER);
+        const isForward = row > piece.row;
+
+        let bonus = 0;
+
+        if (ratio >= 0.75) {
+            // Критическая зона (≥ 15 ходов из 20): сильное давление
+            bonus = isAttack ? 120 : (isForward ? 40 : -30);
+        } else {
+            // Зона предупреждения (≥ 10 ходов из 20): умеренное давление
+            bonus = isAttack ? 50 : (isForward ? 15 : -10);
+        }
+
+        return bonus;
+    },
+
     evaluateMoveV2(moveData, gameState) {
         const { piece, row, col } = moveData;
         const target = gameState.board[row][col];
@@ -1055,6 +1104,9 @@ const aiEngine = {
         
         // Учитываем паттерн игрока
         score += this.adjustScoreByPlayerPattern(piece, { row, col }, gameState);
+        
+        // === Давление ничьи: усиление агрессии при приближении к лимиту ходов ===
+        score += this.getDrawPressureBonus(moveData, gameState);
         
         return score;
     },

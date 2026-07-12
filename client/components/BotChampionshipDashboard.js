@@ -46,6 +46,11 @@ const REASON_RU = {
   hopeless: 'безнадежная позиция',
   surrender: 'сдача',
   no_moves: 'нет доступных ходов',
+  stopped: 'остановлен (ничья)',
+  launch_failed: 'не удалось запустить матч',
+  match_error: 'ошибка матча',
+  timeout: 'таймаут',
+  no_captures_draw: 'ничья без захватов',
 };
 
 function getBackendUrl(baseUrl) {
@@ -88,6 +93,10 @@ export default function BotChampionshipDashboard({ token, baseUrl, onBack }) {
   const [standings, setStandings] = useState([]);
   const [tournamentName, setTournamentName] = useState(null);
   const [recentMatches, setRecentMatches] = useState([]);
+  /** Championship id whose matches are shown in «Сыгранные матчи» */
+  const [resultsChampId, setResultsChampId] = useState(null);
+  const [resultsChampName, setResultsChampName] = useState(null);
+  const [resultsChampStatus, setResultsChampStatus] = useState(null); // running | finished | stopped
   const [archives, setArchives] = useState([]);
   const [isActive, setIsActive] = useState(false);
   const [progress, setProgress] = useState({ completed: 0, total: 0, activeMatches: [] });
@@ -99,7 +108,6 @@ export default function BotChampionshipDashboard({ token, baseUrl, onBack }) {
   const [errorMsg, setErrorMsg] = useState(null);
 
   // Options
-  const [optDouble, setOptDouble] = useState(true);
   const [optHeaded, setOptHeaded] = useState(false);
   const [optAccelerate, setOptAccelerate] = useState(true);
   const [concurrency, setConcurrency] = useState(1);
@@ -116,6 +124,8 @@ export default function BotChampionshipDashboard({ token, baseUrl, onBack }) {
   const socketRef = useRef(null);
   const pollRef = useRef(null);
   const statusResetRef = useRef(null);
+  const isActiveRef = useRef(false);
+  const endingRef = useRef(false);
 
   const authFetch = useCallback(
     async (path, options = {}) => {
@@ -133,18 +143,32 @@ export default function BotChampionshipDashboard({ token, baseUrl, onBack }) {
   const updateLiveUI = useCallback((payload) => {
     const p = payload?.progress || payload;
     if (p && typeof p.completed === 'number') {
-      setIsActive(true);
+      const completed = p.completed || 0;
+      const total = p.total || 0;
+      const allDone = total > 0 && completed >= total;
       setProgress({
-        completed: p.completed || 0,
-        total: p.total || 0,
-        activeMatches: p.activeMatches || [],
+        completed,
+        total,
+        activeMatches: allDone ? [] : (p.activeMatches || []),
       });
+      if (payload?.standings?.standings) {
+        setStandings(payload.standings.standings);
+      }
+      // All matches done → leave running state (tournament:finished / poll will finalize UI)
+      if (allDone) {
+        return { allDone: true, completed, total };
+      }
+      isActiveRef.current = true;
+      endingRef.current = false;
+      setIsActive(true);
       setStatusText('Чемпионат идет');
       setStatusTone('running');
+      return { allDone: false, completed, total };
     }
     if (payload?.standings?.standings) {
       setStandings(payload.standings.standings);
     }
+    return { allDone: false };
   }, []);
 
   const refreshStandings = useCallback(async () => {
@@ -163,8 +187,20 @@ export default function BotChampionshipDashboard({ token, baseUrl, onBack }) {
     try {
       const res = await authFetch('/botchamp/api/results');
       if (!res.ok) return;
-      const matches = await res.json();
-      setRecentMatches(Array.isArray(matches) ? matches : []);
+      const data = await res.json();
+      // New API: { championshipId, championshipName, status, matches }
+      // Legacy fallback: bare array
+      if (Array.isArray(data)) {
+        setRecentMatches(data);
+        return;
+      }
+      setResultsChampId(data.championshipId || null);
+      setResultsChampName(data.championshipName || null);
+      setResultsChampStatus(data.status || null);
+      setRecentMatches(Array.isArray(data.matches) ? data.matches : []);
+      if (data.championshipName) {
+        setTournamentName(data.championshipName);
+      }
     } catch (e) {
       /* ignore */
     }
@@ -181,10 +217,33 @@ export default function BotChampionshipDashboard({ token, baseUrl, onBack }) {
     }
   }, [authFetch]);
 
-  const handleTournamentEnd = useCallback(() => {
+  const handleTournamentEnd = useCallback((payload = {}) => {
+    // Idempotent: ignore duplicate finish events (socket + poll + last match)
+    if (endingRef.current && !isActiveRef.current) return;
+    endingRef.current = true;
+    isActiveRef.current = false;
+
     setIsActive(false);
-    setProgress({ completed: 0, total: 0, activeMatches: [] });
-    setStatusText('Чемпионат завершен!');
+    // Keep final counters visible briefly (e.g. 12/12), clear active match spinner
+    const p = payload?.progress;
+    if (p && typeof p.completed === 'number' && p.total > 0) {
+      setProgress({
+        completed: p.completed,
+        total: p.total,
+        activeMatches: [],
+      });
+    } else {
+      setProgress((prev) => ({
+        completed: prev.total > 0 ? prev.total : prev.completed,
+        total: prev.total,
+        activeMatches: [],
+      }));
+    }
+    if (payload?.standings?.standings) {
+      setStandings(payload.standings.standings);
+    }
+    const stopped = !!payload?.stopped;
+    setStatusText(stopped ? 'Чемпионат остановлен' : 'Чемпионат завершен!');
     setStatusTone('finished');
     refreshStandings();
     loadRecentMatches();
@@ -193,7 +252,9 @@ export default function BotChampionshipDashboard({ token, baseUrl, onBack }) {
     statusResetRef.current = setTimeout(() => {
       setStatusText('Готов к запуску');
       setStatusTone('ready');
-    }, 5000);
+      setProgress({ completed: 0, total: 0, activeMatches: [] });
+      endingRef.current = false;
+    }, 8000);
   }, [refreshStandings, loadRecentMatches, loadArchives]);
 
   // Initial load + socket + poll
@@ -225,7 +286,7 @@ export default function BotChampionshipDashboard({ token, baseUrl, onBack }) {
           const stateRes = await authFetch('/botchamp/api/tournament/state');
           if (stateRes.ok) {
             const state = await stateRes.json();
-            if (state?.progress && state.progress.completed < state.progress.total) {
+            if (state?.isRunning) {
               updateLiveUI(state);
             }
           }
@@ -250,25 +311,59 @@ export default function BotChampionshipDashboard({ token, baseUrl, onBack }) {
     socket.on('disconnect', () => setSocketConnected(false));
     socket.on('match:start', (data) => updateLiveUI(data?.progress != null ? data : { progress: data }));
     socket.on('match:finished', (data) => {
-      updateLiveUI(data);
+      const live = updateLiveUI(data);
       loadRecentMatches();
+      // Fallback if tournament:finished socket is missed: last match done → end UI
+      if (live?.allDone) {
+        handleTournamentEnd({
+          stopped: false,
+          standings: data?.standings,
+          progress: data?.progress,
+        });
+      }
     });
-    socket.on('tournament:finished', () => handleTournamentEnd());
-    socket.on('tournament:started', () => {
+    socket.on('tournament:finished', (data) => handleTournamentEnd(data || {}));
+    socket.on('tournament:started', (data) => {
+      isActiveRef.current = true;
+      endingRef.current = false;
       setIsActive(true);
       setStatusText('Чемпионат идет');
       setStatusTone('running');
+      // New draw: clear previous matches immediately
+      setRecentMatches([]);
+      setResultsChampId(data?.championshipId || null);
+      setResultsChampName(data?.schedule || data?.name || null);
+      setResultsChampStatus('running');
+      if (data?.schedule || data?.name) {
+        setTournamentName(data.schedule || data.name);
+      }
+      setStandings([]);
       refreshStandings();
       loadRecentMatches();
     });
 
+    // Poll is the safety net: detect both running updates AND clean finish
     pollRef.current = setInterval(async () => {
       try {
         const res = await authFetch('/botchamp/api/tournament/state');
         if (!res.ok) return;
         const state = await res.json();
-        if (state?.progress && state.progress.completed < state.progress.total) {
-          updateLiveUI(state);
+        if (state?.isRunning) {
+          const live = updateLiveUI(state);
+          if (live?.allDone) {
+            handleTournamentEnd({
+              stopped: !!state.isStopped,
+              standings: state.standings,
+              progress: state.progress,
+            });
+          }
+        } else if (isActiveRef.current) {
+          // Backend already finished — force UI into completed state
+          handleTournamentEnd({
+            stopped: !!state?.isStopped,
+            standings: state?.standings,
+            progress: state?.progress,
+          });
         }
       } catch (e) {
         /* ignore */
@@ -296,13 +391,9 @@ export default function BotChampionshipDashboard({ token, baseUrl, onBack }) {
     setCurrentScheduleFile(file);
   };
 
-  const generateRoundRobin = () => {
-    setCurrentScheduleFile('__roundrobin');
-  };
-
   const startTournament = async () => {
     if (!currentScheduleFile) {
-      setErrorMsg('Сначала выберите расписание или сгенерируйте круговой турнир.');
+      setErrorMsg('Сначала выберите расписание.');
       return;
     }
     setActionBusy(true);
@@ -314,7 +405,6 @@ export default function BotChampionshipDashboard({ token, baseUrl, onBack }) {
           scheduleFile: currentScheduleFile,
           options: {
             concurrency,
-            double: optDouble,
             headed: optHeaded,
             accelerate: optAccelerate,
           },
@@ -331,9 +421,23 @@ export default function BotChampionshipDashboard({ token, baseUrl, onBack }) {
       }
       const data = await resp.json();
       if (data.ok) {
+        isActiveRef.current = true;
+        endingRef.current = false;
         setIsActive(true);
+        setProgress({
+          completed: 0,
+          total: data.totalMatches || 0,
+          activeMatches: [],
+        });
         setStatusText('Чемпионат идет');
         setStatusTone('running');
+        // Bind UI to the new draw only — wipe previous results immediately
+        setRecentMatches([]);
+        setResultsChampId(data.championshipId || null);
+        setResultsChampName(data.name || null);
+        setResultsChampStatus('running');
+        setStandings([]);
+        if (data.name) setTournamentName(data.name);
         refreshStandings();
         loadRecentMatches();
       }
@@ -346,14 +450,27 @@ export default function BotChampionshipDashboard({ token, baseUrl, onBack }) {
 
   const stopTournament = async () => {
     setActionBusy(true);
+    setErrorMsg(null);
+    setStatusText('Останавливаем…');
     try {
-      await authFetch('/botchamp/api/tournament/stop', { method: 'POST' });
-      setIsActive(false);
-      setProgress({ completed: 0, total: 0, activeMatches: [] });
-      setStatusText('Готов к запуску');
-      setStatusTone('ready');
+      const resp = await authFetch('/botchamp/api/tournament/stop', { method: 'POST' });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        setErrorMsg('Не удалось остановить: ' + (err.error || resp.status));
+        setStatusText('Чемпионат идет');
+        setStatusTone('running');
+        return;
+      }
+      const data = await resp.json().catch(() => ({}));
+      // Current matches → draws; unplayed skipped; show results of played games
+      handleTournamentEnd({
+        stopped: true,
+        standings: data.standings,
+      });
     } catch (e) {
       setErrorMsg('Не удалось остановить чемпионат.');
+      setStatusText('Чемпионат идет');
+      setStatusTone('running');
     } finally {
       setActionBusy(false);
     }
@@ -531,33 +648,8 @@ export default function BotChampionshipDashboard({ token, baseUrl, onBack }) {
                 )}
               </ScrollView>
 
-              <TouchableOpacity
-                style={[
-                  styles.rrBtn,
-                  currentScheduleFile === '__roundrobin' && styles.rrBtnSelected,
-                ]}
-                onPress={generateRoundRobin}
-                activeOpacity={0.8}
-              >
-                <Text
-                  style={[
-                    styles.rrBtnText,
-                    currentScheduleFile === '__roundrobin' && styles.rrBtnTextSelected,
-                  ]}
-                >
-                  {currentScheduleFile === '__roundrobin'
-                    ? '✓  Круговой турнир выбран'
-                    : '↻  Сгенерировать круговой турнир'}
-                </Text>
-              </TouchableOpacity>
-
               <View style={styles.divider} />
 
-              <OptionRow
-                label="Двойной круговой (Round-Robin)"
-                value={optDouble}
-                onValueChange={setOptDouble}
-              />
               <OptionRow
                 label="Показывать окна браузеров"
                 value={optHeaded}
@@ -722,9 +814,24 @@ export default function BotChampionshipDashboard({ token, baseUrl, onBack }) {
             <View style={[styles.bottomRow, isWide && styles.bottomRowWide]}>
               <View style={[styles.panel, styles.halfPanel]}>
                 <Text style={styles.panelTitle}>🎮  Сыгранные матчи</Text>
+                {resultsChampName ? (
+                  <Text style={[styles.hint, { marginBottom: 8 }]}>
+                    {resultsChampStatus === 'running'
+                      ? 'Текущий розыгрыш: '
+                      : 'Последний розыгрыш: '}
+                    <Text style={{ color: COLORS.cyan }}>{resultsChampName}</Text>
+                    {resultsChampStatus === 'running' ? ' (идёт)' : ''}
+                    {resultsChampStatus === 'stopped' ? ' (остановлен)' : ''}
+                    {resultsChampStatus === 'finished' ? ' (завершён)' : ''}
+                  </Text>
+                ) : null}
                 <ScrollView style={styles.listMax} nestedScrollEnabled>
                   {recentMatches.length === 0 ? (
-                    <Text style={styles.emptyHint}>Матчей пока нет.</Text>
+                    <Text style={styles.emptyHint}>
+                      {resultsChampStatus === 'running'
+                        ? 'Матчей текущего розыгрыша пока нет.'
+                        : 'Матчей пока нет.'}
+                    </Text>
                   ) : (
                     recentMatches.map((m) => {
                       const oc = matchOutcomeLabel(m);
@@ -823,7 +930,7 @@ export default function BotChampionshipDashboard({ token, baseUrl, onBack }) {
             {modalLoading ? (
               <ActivityIndicator color={COLORS.cyan} style={{ marginVertical: 40 }} />
             ) : modalKind === 'match' && modalMatch ? (
-              <MatchDetailBody match={modalMatch} backendUrl={backendUrl} />
+              <MatchDetailBody match={modalMatch} backendUrl={backendUrl} token={token} />
             ) : modalKind === 'archive' && modalArchive ? (
               <ArchiveDetailBody
                 archive={modalArchive}
@@ -851,7 +958,7 @@ function OptionRow({ label, value, onValueChange }) {
   );
 }
 
-function MatchDetailBody({ match, backendUrl }) {
+function MatchDetailBody({ match, backendUrl, token }) {
   if (match.error) {
     return <Text style={styles.emptyHint}>{match.error}</Text>;
   }
@@ -867,9 +974,14 @@ function MatchDetailBody({ match, backendUrl }) {
   }
   const reasonStr = match.reason ? REASON_RU[match.reason] || match.reason : null;
   const log = Array.isArray(match.battleLog) ? match.battleLog : [];
-  const shotUrl = match.screenshotPath
-    ? `${backendUrl}/botchamp/${match.screenshotPath}`
-    : null;
+
+  // screenshotPath is like "screenshots/match_….png" — serve with admin token in query
+  // so <img>/window.open works without Authorization header
+  let shotUrl = null;
+  if (match.screenshotPath) {
+    const base = `${backendUrl}/botchamp/${match.screenshotPath.replace(/^\/+/, '')}`;
+    shotUrl = token ? `${base}${base.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}` : base;
+  }
 
   return (
     <ScrollView style={styles.modalBody} nestedScrollEnabled>
@@ -881,6 +993,25 @@ function MatchDetailBody({ match, backendUrl }) {
       </View>
       {match.durationSec != null && (
         <Text style={[styles.hint, { marginBottom: 12 }]}>Длительность: {match.durationSec}s</Text>
+      )}
+
+      {shotUrl ? (
+        <View style={{ marginBottom: 16 }}>
+          <Text style={styles.fieldLabel}>Финальная доска</Text>
+          <Image source={{ uri: shotUrl }} style={styles.screenshot} resizeMode="contain" />
+          {Platform.OS === 'web' ? (
+            <TouchableOpacity
+              style={styles.shotLink}
+              onPress={() => {
+                if (typeof window !== 'undefined') window.open(shotUrl, '_blank');
+              }}
+            >
+              <Text style={styles.shotLinkText}>↗ Открыть в полном размере</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      ) : (
+        <Text style={[styles.emptyHint, { marginBottom: 12 }]}>Скриншот недоступен</Text>
       )}
 
       {log.length > 0 ? (
@@ -897,19 +1028,6 @@ function MatchDetailBody({ match, backendUrl }) {
       ) : (
         <Text style={styles.emptyHint}>Журнал боя недоступен для этого матча.</Text>
       )}
-
-      {shotUrl && Platform.OS === 'web' ? (
-        <TouchableOpacity
-          style={styles.shotLink}
-          onPress={() => {
-            if (typeof window !== 'undefined') window.open(shotUrl, '_blank');
-          }}
-        >
-          <Text style={styles.shotLinkText}>🖼  Финальный скриншот</Text>
-        </TouchableOpacity>
-      ) : shotUrl ? (
-        <Image source={{ uri: shotUrl }} style={styles.screenshot} resizeMode="contain" />
-      ) : null}
     </ScrollView>
   );
 }
@@ -1181,28 +1299,6 @@ const styles = StyleSheet.create({
     color: COLORS.cyan,
     fontSize: 18,
     fontWeight: '700',
-  },
-  rrBtn: {
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: COLORS.white20,
-    borderRadius: 14,
-    paddingVertical: 12,
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  rrBtnSelected: {
-    borderStyle: 'solid',
-    borderColor: COLORS.cyan,
-    backgroundColor: COLORS.cyanDim,
-  },
-  rrBtnText: {
-    color: COLORS.muted,
-    fontSize: 13,
-  },
-  rrBtnTextSelected: {
-    color: COLORS.cyan,
-    fontWeight: '600',
   },
   divider: {
     height: 1,
@@ -1632,10 +1728,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   screenshot: {
-    marginTop: 12,
+    marginTop: 8,
     width: '100%',
-    height: 200,
+    height: 360,
     borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    borderWidth: 1,
+    borderColor: COLORS.white10,
   },
   archiveStandingRow: {
     flexDirection: 'row',

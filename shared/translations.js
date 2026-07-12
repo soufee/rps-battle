@@ -117,6 +117,8 @@ export const TRANSLATIONS = {
     reasonDisconnectTimeout: "Opponent disconnected.",
     reasonTurnTimeout: "Turn time limit expired.",
     reasonDrawNoCapture: "Draw: 20 moves without capture.",
+    reasonMutualStalemate: "Draw: Only flags and revealed traps remain.",
+    towerCompleteGameOver: "Congratulations! You have successfully conquered the Challenge Tower!",
     setupTimeout: "Setup time expired.",
 
     // Generic
@@ -431,6 +433,8 @@ export const TRANSLATIONS = {
     reasonDisconnectTimeout: "Соперник не переподключился.",
     reasonTurnTimeout: "Время хода истекло.",
     reasonDrawNoCapture: "20 ходов без взятий — объявлена ничья.",
+    reasonMutualStalemate: "Ничья: у обоих игроков остались только флаги и раскрытые капканы.",
+    towerCompleteGameOver: "Поздравляем! Вы успешно прошли всю Башню испытаний!",
     setupTimeout: "Время на расстановку истекло.",
 
     you: "Вы",
@@ -688,6 +692,8 @@ export const TRANSLATIONS = {
     reasonDisconnectTimeout: "L'adversaire s'est déconnecté.",
     reasonTurnTimeout: "Temps de tour écoulé.",
     reasonDrawNoCapture: "Égalité: 20 coups sans capture.",
+    reasonMutualStalemate: "Égalité: il ne reste que des drapeaux et des pièges aux deux joueurs.",
+    towerCompleteGameOver: "Félicitations ! Vous avez conquis la Tour des Épreuves avec succès !",
     setupTimeout: "Temps de préparation écoulé.",
 
     you: "Vous",
@@ -933,6 +939,8 @@ export const TRANSLATIONS = {
     reasonDisconnectTimeout: "Verbindung zum Gegner verloren.",
     reasonTurnTimeout: "Zugzeit abgelaufen.",
     reasonDrawNoCapture: "Unentschieden: 20 Züge ohne Schlag.",
+    reasonMutualStalemate: "Unentschieden: Beide Spieler haben nur noch Flaggen und Fallen übrig.",
+    towerCompleteGameOver: "Herzlichen Glückwunsch! Du hast den Herausforderungsturm erfolgreich bezwungen!",
     setupTimeout: "Aufstellungszeit abgelaufen.",
 
     you: "Du",
@@ -1178,6 +1186,8 @@ export const TRANSLATIONS = {
     reasonDisconnectTimeout: "El rival se ha desconectado.",
     reasonTurnTimeout: "Tiempo de turno agotado.",
     reasonDrawNoCapture: "Empate: 20 movimientos sin captura.",
+    reasonMutualStalemate: "Empate: a ambos jugadores solo les quedan banderas y trampas.",
+    towerCompleteGameOver: "¡Felicitaciones! ¡Has conquistado con éxito la Torre de Desafíos!",
     setupTimeout: "Tiempo de preparación agotado.",
 
     you: "Tú",
@@ -1423,6 +1433,8 @@ export const TRANSLATIONS = {
     reasonDisconnectTimeout: "Rakibin bağlantısı koptu.",
     reasonTurnTimeout: "Hamle süresi doldu.",
     reasonDrawNoCapture: "Beraberlik: Taş almadan 20 hamle yapıldı.",
+    reasonMutualStalemate: "Beraberlik: Her iki oyuncunun da sadece bayrakları ve tuzakları kaldı.",
+    towerCompleteGameOver: "Tebrikler! Meydan Okuma Kulesi'ni başarıyla geçtiniz!",
     setupTimeout: "Hazırlık süresi doldu.",
 
     you: "Sen",
@@ -1668,6 +1680,8 @@ export const TRANSLATIONS = {
     reasonDisconnectTimeout: "انقطع اتصال الخصم.",
     reasonTurnTimeout: "انتهى وقت الدور.",
     reasonDrawNoCapture: "تعادل: 20 حركة دون أسر.",
+    reasonMutualStalemate: "تعادل: لم يتبق لكلا اللاعبين سوى الأعلام والفخاخ.",
+    towerCompleteGameOver: "تهانينا! لقد نجحت في اجتياز برج التحدي بالكامل!",
     setupTimeout: "انتهى وقت الإعداد.",
 
     you: "أنت",
@@ -1913,6 +1927,8 @@ export const TRANSLATIONS = {
     reasonDisconnectTimeout: "对手已断开连接。",
     reasonTurnTimeout: "回合时间已到。",
     reasonDrawNoCapture: "平局：连续20步没有吃子。",
+    reasonMutualStalemate: "平局：双方只剩旗帜和陷阱。",
+    towerCompleteGameOver: "恭喜！你已成功通关挑战之塔！",
     setupTimeout: "布阵时间已到。",
 
     you: "你",

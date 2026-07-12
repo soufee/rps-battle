@@ -223,6 +223,22 @@ async function endGameSession(room, io, winnerRole, reason) {
   }, 10000);
 }
 
+function isMutualStalemate(p1Pieces, p2Pieces) {
+  const activeP1 = p1Pieces.filter(p => !p.removed);
+  const activeP2 = p2Pieces.filter(p => !p.removed);
+  
+  if (activeP1.length === 0 || activeP2.length === 0) return false;
+  
+  const p1OnlyFlagsAndTraps = activeP1.every(p => 
+    p.type === FLAG || (p.type === TRAP && (p.revealed || p.immobilized))
+  );
+  const p2OnlyFlagsAndTraps = activeP2.every(p => 
+    p.type === FLAG || (p.type === TRAP && (p.revealed || p.immobilized))
+  );
+  
+  return p1OnlyFlagsAndTraps && p2OnlyFlagsAndTraps;
+}
+
 // Check game ending conditions
 function checkGameEnd(room, io) {
   if (room.p1Pieces.length === 0) {
@@ -232,6 +248,11 @@ function checkGameEnd(room, io) {
   
   if (room.p2Pieces.length === 0) {
     endGameSession(room, io, 'p1', 'no_pieces');
+    return true;
+  }
+
+  if (isMutualStalemate(room.p1Pieces, room.p2Pieces)) {
+    endGameSession(room, io, 'draw', 'mutual_stalemate');
     return true;
   }
   

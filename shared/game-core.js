@@ -229,6 +229,28 @@ export function isHopeless(pieces) {
 }
 
 /**
+ * Check if the game is in a mutual stalemate (both players have only flags and revealed/immobilized traps)
+ */
+export function isMutualStalemate(playerPieces, aiPieces) {
+    const activePlayer = playerPieces.filter(p => !p.removed);
+    const activeAi = aiPieces.filter(p => !p.removed);
+
+    if (activePlayer.length === 0 || activeAi.length === 0) {
+        return false;
+    }
+
+    const playerOnlyFlagsAndTraps = activePlayer.every(p =>
+        p.type === FLAG || (p.type === TRAP && (p.revealed || p.immobilized))
+    );
+
+    const aiOnlyFlagsAndTraps = activeAi.every(p =>
+        p.type === FLAG || (p.type === TRAP && (p.revealed || p.immobilized))
+    );
+
+    return playerOnlyFlagsAndTraps && aiOnlyFlagsAndTraps;
+}
+
+/**
  * Check game-over conditions
  */
 export function checkGameEnd(gameState) {
@@ -239,6 +261,11 @@ export function checkGameEnd(gameState) {
     
     if (gameState.aiPieces.length === 0) {
         endGame(gameState, true, 'no_pieces');
+        return true;
+    }
+
+    if (isMutualStalemate(gameState.playerPieces, gameState.aiPieces)) {
+        endGame(gameState, 'draw', 'mutual_stalemate');
         return true;
     }
     

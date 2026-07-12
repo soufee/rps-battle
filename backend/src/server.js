@@ -18,7 +18,6 @@ import {
   getBotEmoji,
   getAllBots
 } from './botchamp/BotDiscovery.js';
-import { generateRoundRobin } from './botchamp/generateRoundRobin.js';
 import TournamentEngine from './botchamp/TournamentEngine.js';
 
 // Load env
@@ -210,42 +209,98 @@ app.get('/botchamp/api/schedules', requireChampionshipAuth, (req, res) => {
   }
 });
 
+/**
+ * Current draw if the engine is running; otherwise the previous finished/stopped draw.
+ * Stale DB rows with status=running (e.g. after a server restart) are closed out so
+ * they don't shadow the real last tournament in «Сыгранные матчи».
+ */
+async function resolveDisplayChampionship() {
+  // Prefer the championship the in-memory engine is actually running
+  if (tournamentEngine.isRunning() && tournamentEngine.championshipId) {
+    const live = await prisma.championship.findUnique({
+      where: { id: tournamentEngine.championshipId }
+    });
+    if (live) return live;
+  }
+
+  // Close orphaned "running" records that are no longer in the engine
+  if (!tournamentEngine.isRunning()) {
+    try {
+      await prisma.championship.updateMany({
+        where: { status: 'running' },
+        data: {
+          status: 'stopped',
+          finishedAt: new Date()
+        }
+      });
+    } catch (err) {
+      console.error('[BotChamp] Failed to close stale running championships:', err);
+    }
+  }
+
+  return prisma.championship.findFirst({
+    where: { status: { in: ['finished', 'stopped'] } },
+    orderBy: { startedAt: 'desc' }
+  });
+}
+
 app.post('/botchamp/api/tournament/start', requireChampionshipAuth, async (req, res) => {
-  const state = tournamentEngine.getLiveState();
-  if (state.progress && state.progress.completed < state.progress.total) {
+  if (tournamentEngine.isRunning()) {
     return res.status(409).json({ error: 'Championship is already running' });
   }
   
-  const { scheduleFile, options } = req.body;
-  
+  const { scheduleFile, options = {} } = req.body;
+
+  if (!scheduleFile) {
+    return res.status(400).json({ error: 'scheduleFile is required' });
+  }
+
   let schedule = null;
-  if (scheduleFile === '__roundrobin') {
-    schedule = generateRoundRobin(options);
-  } else {
-    const filePath = path.join(__dirname, 'botchamp/configs', scheduleFile);
-    try {
-      schedule = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-    } catch (e) {
-      return res.status(400).json({ error: 'Schedule file not found' });
-    }
+  const filePath = path.join(__dirname, 'botchamp/configs', scheduleFile);
+  try {
+    schedule = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch (e) {
+    return res.status(400).json({ error: 'Schedule file not found' });
   }
 
   tournamentEngine.options.headed = !!options.headed;
   tournamentEngine.options.concurrency = Number(options.concurrency) || 1;
   tournamentEngine.options.accelerate = options.accelerate !== false;
 
-  tournamentEngine.runTournament(schedule).catch(err => {
-    console.error('[BotChamp API] Tournament crashed:', err);
-  });
-  
-  io.emit('tournament:started', { schedule: schedule.name });
-
-  res.json({ ok: true });
+  try {
+    // Await only championship create + kickoff (not the full tournament)
+    const info = await tournamentEngine.runTournament(schedule);
+    io.emit('tournament:started', {
+      schedule: info.name,
+      championshipId: info.championshipId,
+      totalMatches: info.totalMatches
+    });
+    res.json({
+      ok: true,
+      championshipId: info.championshipId,
+      name: info.name,
+      totalMatches: info.totalMatches
+    });
+  } catch (err) {
+    console.error('[BotChamp API] Tournament failed to start:', err);
+    res.status(500).json({ error: 'Failed to start championship' });
+  }
 });
 
 app.post('/botchamp/api/tournament/stop', requireChampionshipAuth, async (req, res) => {
-  await tournamentEngine.close();
-  res.json({ ok: true });
+  try {
+    const result = await tournamentEngine.stop();
+    res.json({
+      ok: true,
+      stopped: true,
+      alreadyStopped: !!result?.alreadyStopped,
+      standings: tournamentEngine.standings.toJSON(),
+      progress: tournamentEngine.progress
+    });
+  } catch (err) {
+    console.error('[BotChamp API] Stop failed:', err);
+    res.status(500).json({ error: 'Failed to stop championship' });
+  }
 });
 
 app.get('/botchamp/api/tournament/state', requireChampionshipAuth, (req, res) => {
@@ -253,31 +308,49 @@ app.get('/botchamp/api/tournament/state', requireChampionshipAuth, (req, res) =>
 });
 
 app.get('/botchamp/api/standings', requireChampionshipAuth, async (req, res) => {
-  const latestChamp = await prisma.championship.findFirst({
-    orderBy: { startedAt: 'desc' }
-  });
-  if (!latestChamp) {
-    return res.json({ standings: [], tournamentName: null });
+  const champ = await resolveDisplayChampionship();
+  if (!champ) {
+    return res.json({
+      standings: [],
+      tournamentName: null,
+      championshipId: null,
+      status: null
+    });
   }
-  const standings = latestChamp.standings || { standings: [] };
+  const standings = champ.standings || { standings: [] };
   res.json({
     standings: standings.standings || [],
-    tournamentName: latestChamp.name
+    tournamentName: champ.name,
+    championshipId: champ.id,
+    status: champ.status
   });
 });
 
+/**
+ * Matches of the current draw if a championship is running;
+ * otherwise matches of the previous (latest finished/stopped) draw.
+ * Never mixes multiple championships.
+ */
 app.get('/botchamp/api/results', requireChampionshipAuth, async (req, res) => {
-  const latestChamp = await prisma.championship.findFirst({
-    orderBy: { startedAt: 'desc' }
-  });
-  if (!latestChamp) {
-    return res.json([]);
+  const champ = await resolveDisplayChampionship();
+  if (!champ) {
+    return res.json({
+      championshipId: null,
+      championshipName: null,
+      status: null,
+      matches: []
+    });
   }
   const matches = await prisma.championshipMatch.findMany({
-    where: { championshipId: latestChamp.id },
+    where: { championshipId: champ.id },
     orderBy: { playedAt: 'desc' }
   });
-  res.json(matches);
+  res.json({
+    championshipId: champ.id,
+    championshipName: champ.name,
+    status: champ.status,
+    matches
+  });
 });
 
 app.get('/botchamp/api/result/:id', requireChampionshipAuth, async (req, res) => {
