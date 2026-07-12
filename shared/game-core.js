@@ -1,6 +1,6 @@
 import { GAME_CONFIG, PLAYER, COMPUTER, FLAG, TRAP, PIECE_TYPES, PIECE_SYMBOLS, BOARD_WIDTH, BOARD_HEIGHT } from './game-config.js';
 import { resolveBattle, getValidMoves } from './game-rules.js';
-import { botRegistry, aiEngine, aiBeliefs } from './ai/index.js';
+import { botRegistry, aiEngine, aiBeliefs, devMode } from './ai/index.js';
 
 /**
  * Generate a shuffled array of `count` RPS types with a guaranteed
@@ -55,7 +55,10 @@ export function initGame(botId = 'rabbit') {
         lastMove: null,
         winner: null,
         endReason: null,
-        movesWithoutCapture: 0
+        movesWithoutCapture: 0,
+        devMode: false,
+        topBotId: botId,
+        bottomBotId: botId
     };
 }
 
@@ -193,6 +196,10 @@ export function removePiece(gameState, piece) {
         if (index > -1) {
             gameState.aiPieces.splice(index, 1);
         }
+        // Dev mode mirror: the bottom bot must also forget this piece.
+        if (gameState.devMode && typeof devMode !== 'undefined' && devMode.active) {
+            devMode.notifyBottomOfPieceRemoved(piece.id);
+        }
     }
     
     piece.removed = true;
@@ -264,6 +271,16 @@ export function endGame(gameState, playerWon, reason) {
     [...gameState.playerPieces, ...gameState.aiPieces].forEach(piece => {
         piece.revealed = true;
     });
+
+    if (gameState.devMode && typeof devMode !== 'undefined' && devMode.active) {
+        devMode.stop();
+    }
+
+    // Call window.gameCore.endGame if defined (so Playwright hook captures it)
+    if (typeof window !== 'undefined' && window.gameCore && typeof window.gameCore.endGame === 'function') {
+        window.gameCore.gameState = gameState;
+        window.gameCore.endGame(playerWon, reason);
+    }
 }
 
 /**
@@ -311,6 +328,16 @@ export function makeMove(gameState, piece, newRow, newCol) {
         if (targetPiece.owner === PLAYER) {
             const revealedType = targetPiece.type === 'piece' ? targetPiece.pieceType : targetPiece.type;
             aiBeliefs.onBattle(targetPiece.id, revealedType, null, aiEngine.aiTurnCounter);
+        }
+        
+        // Dev-mode: mirror reveal events into the bottom bot's belief slot
+        if (gameState.devMode && typeof devMode !== 'undefined' && devMode.active) {
+            if (piece.owner === COMPUTER) {
+                devMode.notifyBottomOfBattle(piece);
+            }
+            if (targetPiece.owner === COMPUTER) {
+                devMode.notifyBottomOfBattle(targetPiece);
+            }
         }
         
         // Flag Capture
@@ -440,6 +467,11 @@ export function makeMove(gameState, piece, newRow, newCol) {
                 piece: piece
             });
             aiBeliefs.onPlayerMove(piece.id, oldRow, oldCol, newRow, newCol, gameState);
+        }
+
+        // Dev-mode: mirror top moves into bottom bot's memory slot
+        if (gameState.devMode && piece.owner === COMPUTER && typeof devMode !== 'undefined' && devMode.active) {
+            devMode.notifyBottomOfTopMove(piece, oldRow, oldCol, newRow, newCol, gameState);
         }
         
         checkGameEnd(gameState);
@@ -597,6 +629,212 @@ export function makeBotMove(gameState) {
         return {
             type: 'no_moves',
             winner: PLAYER
+        };
+    }
+}
+
+export function startDevMatch(gameState, topBotId, bottomBotId) {
+    const fallbackId = botRegistry.getFallbackId ? botRegistry.getFallbackId() : 'rabbit';
+    const resolvedTopId = botRegistry.get(topBotId) ? topBotId : fallbackId;
+    const resolvedBottomId = botRegistry.get(bottomBotId) ? bottomBotId : fallbackId;
+    
+    gameState.phase = GAME_CONFIG.PHASES.PLAYING;
+    gameState.gameOver = false;
+    gameState.currentPlayer = COMPUTER;
+    gameState.devMode = true;
+    gameState.botId = resolvedTopId;
+    gameState.topBotId = resolvedTopId;
+    gameState.bottomBotId = resolvedBottomId;
+    gameState.movesWithoutCapture = 0;
+    
+    aiEngine.resetMemory();
+    devMode.start(resolvedTopId, resolvedBottomId);
+    
+    // Clear board
+    for (let r = 0; r < BOARD_HEIGHT; r++) {
+        for (let c = 0; c < BOARD_WIDTH; c++) {
+            gameState.board[r][c] = null;
+        }
+    }
+    
+    placeBottomPieces(gameState, resolvedBottomId);
+    placeComputerPieces(gameState);
+    
+    devMode.initBothBeliefs(gameState);
+}
+
+export function placeBottomPieces(gameState, botId) {
+    gameState.playerPieces = [];
+    
+    const { flagIndex: flagPos, trapIndex: trapPos } =
+        devMode.chooseBottomFlagAndTrapPositions(botId);
+    
+    let flagCount = 0;
+    let trapCount = 0;
+    
+    const totalPieces = GAME_CONFIG.GAME.TOTAL_PIECES;
+    const pieceTypes = generateBalancedPieceTypes(totalPieces - 2, 3);
+    let pieceIdx = 0;
+    
+    for (let i = 0; i < totalPieces; i++) {
+        const col = i % 8;
+        const row = Math.floor(i / 8) + 4; // rows 4 & 5
+        
+        let type;
+        let pieceType = null;
+        if (i === flagPos && flagCount === 0) {
+            type = FLAG;
+            flagCount++;
+        } else if (i === trapPos && trapCount === 0) {
+            type = TRAP;
+            trapCount++;
+        } else {
+            type = 'piece';
+            pieceType = pieceTypes[pieceIdx++];
+        }
+        
+        const piece = {
+            id: `player_${i}`,
+            type: type,
+            pieceType: pieceType,
+            owner: PLAYER,
+            row: row,
+            col: col,
+            revealed: false,
+            immobilized: false,
+            removed: false
+        };
+        
+        gameState.playerPieces.push(piece);
+        gameState.board[row][col] = piece;
+    }
+}
+
+export function makeBottomBotMove(gameState) {
+    if (gameState.gameOver || !gameState.devMode || gameState.currentPlayer !== PLAYER || gameState.battleState) {
+        return { type: 'error', reason: 'Not bottom bot turn' };
+    }
+    
+    const move = devMode.makeBottomMove(gameState);
+    
+    if (move) {
+        const result = makeMove(gameState, move.piece, move.row, move.col);
+        if (result.type !== 'battle' || result.result !== 'draw') {
+            endTurn(gameState);
+        }
+        return result;
+    } else {
+        endGame(gameState, false, 'no_moves');
+        return {
+            type: 'no_moves',
+            winner: COMPUTER
+        };
+    }
+}
+
+export function resolveDevModeTie(gameState) {
+    if (!gameState.battleState || !gameState.devMode) return { type: 'error', reason: 'Not in battle tie' };
+    
+    const { attacker, defender, newRow, newCol } = gameState.battleState;
+    const topPiece = attacker.owner === COMPUTER ? attacker : defender;
+    const bottomPiece = attacker.owner === PLAYER ? attacker : defender;
+    
+    const bottomChoice = devMode.pickChoiceForSide(
+        'bottom',
+        bottomPiece.pieceType,
+        topPiece.pieceType,
+        gameState
+    );
+    bottomPiece.pieceType = bottomChoice;
+    gameState.battleState.playerChoice = bottomChoice;
+    
+    const topChoice = devMode.pickChoiceForSide(
+        'top',
+        topPiece.pieceType,
+        bottomPiece.pieceType,
+        gameState
+    );
+    topPiece.pieceType = topChoice;
+    gameState.battleState.aiChoice = topChoice;
+    
+    const result = resolveBattle(attacker.pieceType, defender.pieceType);
+    const drawRound = gameState.battleState.drawRound;
+    
+    if (result === 'win') {
+        removePiece(gameState, defender);
+        const oldRow = attacker.row;
+        const oldCol = attacker.col;
+        gameState.board[attacker.row][attacker.col] = null;
+        attacker.row = newRow;
+        attacker.col = newCol;
+        gameState.board[newRow][newCol] = attacker;
+        gameState.lastMove = { from: [oldRow, oldCol], to: [newRow, newCol] };
+        
+        gameState.battleState = null;
+        checkGameEnd(gameState);
+        endTurn(gameState);
+        return {
+            type: 'tie_resolved',
+            attacker,
+            defender,
+            result: 'win',
+            winner: attacker.owner,
+            playerChoice: bottomChoice,
+            aiChoice: topChoice
+        };
+    } else if (result === 'lose') {
+        removePiece(gameState, attacker);
+        gameState.lastMove = { from: [attacker.row, attacker.col], to: [defender.row, defender.col] };
+        
+        gameState.battleState = null;
+        checkGameEnd(gameState);
+        endTurn(gameState);
+        return {
+            type: 'tie_resolved',
+            attacker,
+            defender,
+            result: 'lose',
+            winner: defender.owner,
+            playerChoice: bottomChoice,
+            aiChoice: topChoice
+        };
+    } else {
+        const nextRound = drawRound + 1;
+        gameState.battleState.drawRound = nextRound;
+        
+        if (nextRound > 6) {
+            const attRow = attacker.row;
+            const attCol = attacker.col;
+            const defRow = defender.row;
+            const defCol = defender.col;
+            removePiece(gameState, attacker);
+            removePiece(gameState, defender);
+            gameState.lastMove = { from: [attRow, attCol], to: [defRow, defCol] };
+            gameState.battleState = null;
+            checkGameEnd(gameState);
+            endTurn(gameState);
+            return {
+                type: 'mutual_annihilation',
+                attacker,
+                defender,
+                playerChoice: bottomChoice,
+                aiChoice: topChoice
+            };
+        }
+        
+        gameState.battleState.lastRound = {
+            playerChoice: bottomChoice,
+            opponentChoice: topChoice,
+            attackerType: attacker.pieceType,
+            defenderType: defender.pieceType
+        };
+        
+        precommitAITieChoice(gameState);
+        return {
+            type: 'tie_draw',
+            drawRound: nextRound,
+            playerChoice: bottomChoice,
+            aiChoice: topChoice
         };
     }
 }

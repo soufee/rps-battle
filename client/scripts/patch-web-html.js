@@ -150,5 +150,4 @@ if (fs.existsSync(termsSrc)) {
   fs.copyFileSync(termsSrc, path.join(distDir, 'terms.html'));
   console.log('Copied terms.html to dist');
 }
-
 console.log(`Patched ${indexPath} → ${bundle} (platform: ${PLATFORM})`);

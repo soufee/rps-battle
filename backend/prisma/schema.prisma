@@ -133,3 +133,39 @@ model MatchHistory {
   player2   User     @relation("Player2Matches", fields: [player2Id], references: [id], onDelete: Cascade)
   winner    User?    @relation("WonMatches", fields: [winnerId], references: [id], onDelete: Cascade)
 }
+
+model Championship {
+  id               String              @id @default(uuid())
+  name             String
+  status           String              @default("running") // running, finished, stopped
+  startedAt        DateTime            @default(now())
+  finishedAt       DateTime?
+  totalMatches     Int
+  completedMatches Int                 @default(0)
+  standings        Json?               // Standings snapshot
+  schedule         Json?               // Saved schedule
+  matches          ChampionshipMatch[]
+}
+
+model ChampionshipMatch {
+  id             String       @id
+  championshipId String
+  championship   Championship @relation(fields: [championshipId], references: [id], onDelete: Cascade)
+  round          Int
+  topBotId       String
+  bottomBotId    String
+  topBotName     String
+  bottomBotName  String
+  winner         String       // "top", "bottom", "draw"
+  loser          String?
+  reason         String?
+  durationSec    Int
+  totalMoves     Int?
+  timedOut       Boolean      @default(false)
+  battleLog      Json         // array of log messages
+  screenshotPath String?      // Path to screenshot on disk
+  playedAt       DateTime     @default(now())
+
+  @@index([championshipId])
+}
+

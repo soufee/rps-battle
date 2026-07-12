@@ -29,10 +29,13 @@ import {
   makeBotMove,
   removePiece,
   endGame,
-  endTurn
+  endTurn,
+  startDevMatch,
+  makeBottomBotMove,
+  resolveDevModeTie
 } from './shared/game-core.js';
 import { getValidMoves } from './shared/game-rules.js';
-import { botRegistry } from './shared/ai/index.js';
+import { botRegistry, devMode, aiEngine } from './shared/ai/index.js';
 import {
   GAME_CONFIG,
   PIECE_SYMBOLS,
@@ -48,6 +51,7 @@ import { SKINS, SKIN_ORDER, getSkin, CellDecoration } from './skins';
 import { t, SUPPORTED_LOCALES, LOCALE_DATE_TAGS, TRANSLATIONS } from './shared/translations.js';
 import audioManager from './shared/audio-manager.js';
 import VictoryConfetti from './components/VictoryConfetti.js';
+import BotChampionshipDashboard from './components/BotChampionshipDashboard.js';
 import {
   detectFacebookInstant,
   waitForFBInstant,
@@ -82,6 +86,33 @@ const getBaseUrl = () => {
   return 'https://rps-battles.com';
 };
 const BASE_URL = getBaseUrl();
+
+// Expose required globals on window for Playwright compatibility
+if (Platform.OS === 'web' && typeof window !== 'undefined') {
+  window.botRegistry = botRegistry;
+  window.devMode = devMode;
+  window.GAME_CONFIG = GAME_CONFIG;
+  window.aiEngine = aiEngine;
+  if (!window.gameCore) {
+    window.gameCore = {
+      gameState: null,
+      endGame: (playerWon, reason) => {
+        // Mock method for Playwright's hook to wrap
+      }
+    };
+  }
+}
+
+const getQueryParam = (name) => {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
+  const params = new URLSearchParams(window.location.search);
+  return params.get(name);
+};
+
+const isChampMode = getQueryParam('championship') === 'true';
+const topBotParam = getQueryParam('top') || 'rabbit';
+const bottomBotParam = getQueryParam('bottom') || 'rabbit';
+const speedParam = getQueryParam('speed') || '1';
 
 // Запуск внутри VK Mini Apps: игра открыта по пути /vk (адрес iframe в настройках
 // приложения VK). Аккаунт задаётся самим VK, поэтому выход из аккаунта скрыт.
@@ -121,41 +152,41 @@ const TOURNAMENT_LADDER_V1 = [
   'wolf',
   'hedgehog',
   'raven',
-  'kimi_2_5',
-  'codex_5_3_medium',
-  'composer_2_5',
-  'gemini_3_1_pro',
-  'gemini_3_5_flash',
-  'gpt_5_5',
-  'grok_apex',
-  'grok_build_0_1',
-  'haiku_4_5',
-  'opus_4_7_flash',
-  'opus_4_8_high',
-  'sonnet_4_6_medium'
+  'homyachok',
+  'bobrenok',
+  'losenok',
+  'utenok',
+  'leopardik',
+  'medvezhonok',
+  'obezyanka',
+  'lenivchik',
+  'golubenok',
+  'akulenok',
+  'orlenok',
+  'kapibarysh'
 ];
 
 const TOURNAMENT_LADDER_V2 = [
-  'grok_build_0_1',
-  'gemini_3_1_pro',
-  'sonnet_4_6_medium',
-  'haiku_4_5',
-  'grok_apex',
+  'lenivchik',
+  'utenok',
+  'kapibarysh',
+  'golubenok',
+  'obezyanka',
   'rabbit',
-  'kimi_2_5',
+  'homyachok',
   'lion',
-  'codex_5_3_medium',
+  'bobrenok',
   'raccoon',
   'raven',
   'fox',
-  'gpt_5_5',
-  'opus_4_8_high',
+  'medvezhonok',
+  'orlenok',
   'hedgehog',
   'wolf',
-  'gemini_3_5_flash',
+  'leopardik',
   'owl',
-  'opus_4_7_flash',
-  'composer_2_5'
+  'akulenok',
+  'losenok'
 ];
 
 function getTournamentLadder(version) {
@@ -937,7 +968,7 @@ export default function App() {
     setTimeout(() => setLoading(false), 240);
   };
 
-  // Screen state: 'lobby', 'arena', 'arena_private', 'arena_open', 'bot_select', 'game', 'profile', 'matchmaking'
+  // Screen state: 'lobby', 'arena', 'arena_private', 'arena_open', 'bot_select', 'game', 'profile', 'matchmaking', 'botchamp'
   const [screen, setScreen] = useState('lobby');
   const [confettiBurst, setConfettiBurst] = useState(null);
   const [isFacebookInstant, setIsFacebookInstant] = useState(false);
@@ -1004,6 +1035,33 @@ export default function App() {
       setNicknameSuccess(null);
     }
   }, [user]);
+
+  // Sync battle logs for Playwright
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.__battleLogs = battleLogs;
+    }
+  }, [battleLogs]);
+
+  // Auto-start championship match
+  useEffect(() => {
+    if (isChampMode && user && screen !== 'game') {
+      setTimeout(() => {
+        setGameMode('pve');
+        const freshGame = initGame(topBotParam);
+        startDevMatch(freshGame, topBotParam, bottomBotParam);
+        setGame(freshGame);
+        setScreen('game');
+        setBattleLogs(['🎮 Матч чемпионата начался!']);
+        
+        if (typeof window !== 'undefined') {
+          window.gameCore.gameState = freshGame;
+        }
+        
+        triggerBotTurn(freshGame);
+      }, 500);
+    }
+  }, [isChampMode, user, screen]);
 
   // Фоновая музыка: лобби-эмбиент вне боя, боевой эмбиент в матче
   const bgmTypeRef = useRef(null);
@@ -1224,6 +1282,13 @@ export default function App() {
         }
       }
       setFbAuthBooting(false);
+
+      if (isChampMode) {
+        setUser({ nickname: 'Championship', email: 'champ@test.local', role: 'admin' });
+        setToken('mock-champ-token');
+        finishLoading();
+        return;
+      }
 
       let justGotTokenFromUrl = false;
       if (typeof window !== 'undefined' && window.location) {
@@ -2332,11 +2397,28 @@ export default function App() {
     if (result.type === 'move') {
       const fromCoord = formatBoardCoord(result.from[0], result.from[1]);
       const toCoord = formatBoardCoord(result.to[0], result.to[1]);
-      const who = result.piece.owner === PLAYER ? tr('you') : tr('bot');
+      let who;
+      if (updatedGame.devMode) {
+        who = result.piece.owner === PLAYER 
+          ? (botRegistry.get(updatedGame.bottomBotId)?.name || 'Bot 2')
+          : (botRegistry.get(updatedGame.topBotId)?.name || 'Bot 1');
+      } else {
+        who = result.piece.owner === PLAYER ? tr('you') : tr('bot');
+      }
       addLog(tr('logMoved', { who, from: fromCoord, to: toCoord }));
     } else if (result.type === 'battle' || result.type === 'battle_trap' || result.type === 'battle_flag') {
-      const attackerName = result.attacker.owner === PLAYER ? tr('you') : tr('bot');
-      const defenderName = result.defender.owner === PLAYER ? tr('you') : tr('bot');
+      let attackerName, defenderName;
+      if (updatedGame.devMode) {
+        attackerName = result.attacker.owner === PLAYER
+          ? (botRegistry.get(updatedGame.bottomBotId)?.name || 'Bot 2')
+          : (botRegistry.get(updatedGame.topBotId)?.name || 'Bot 1');
+        defenderName = result.defender.owner === PLAYER
+          ? (botRegistry.get(updatedGame.bottomBotId)?.name || 'Bot 2')
+          : (botRegistry.get(updatedGame.topBotId)?.name || 'Bot 1');
+      } else {
+        attackerName = result.attacker.owner === PLAYER ? tr('you') : tr('bot');
+        defenderName = result.defender.owner === PLAYER ? tr('you') : tr('bot');
+      }
       const attSym = PIECE_SYMBOLS[result.attacker.pieceType || result.attacker.type];
       const defSym = PIECE_SYMBOLS[result.defender.pieceType || result.defender.type];
 
@@ -2351,9 +2433,22 @@ export default function App() {
       }
 
       addLog(battleDesc);
+    } else if (result.type === 'tie_resolved') {
+      const winnerName = result.winner === PLAYER
+        ? (updatedGame.devMode ? (botRegistry.get(updatedGame.bottomBotId)?.name || 'Bot 2') : tr('you'))
+        : (updatedGame.devMode ? (botRegistry.get(updatedGame.topBotId)?.name || 'Bot 1') : tr('bot'));
+      addLog(tr('logTieResolved', { result: tr('victory') + ' ' + winnerName }));
+    } else if (result.type === 'mutual_annihilation') {
+      audioManager.playSFX('trap');
+      addLog(tr('logMutualDestruction'));
+    } else if (result.type === 'tie_draw') {
+      addLog(tr('logTieAgain', { round: result.drawRound }));
     }
     
     setGame({ ...updatedGame });
+    if (typeof window !== 'undefined' && window.gameCore) {
+      window.gameCore.gameState = updatedGame;
+    }
     
     if (updatedGame.gameOver) {
       handleGameOver(updatedGame.winner, updatedGame.endReason);
@@ -2361,10 +2456,33 @@ export default function App() {
     }
     
     if (updatedGame.battleState) {
+      if (updatedGame.devMode) {
+        // Auto-resolve tie breaker!
+        const thinkDelay = isChampMode 
+          ? Math.max(5, (GAME_CONFIG.TIMING.AI_THINK_DELAY || 1000) / (parseFloat(speedParam) || 1))
+          : (GAME_CONFIG.TIMING.AI_THINK_DELAY || 1000);
+        
+        setTimeout(() => {
+          const nextGame = { ...updatedGame };
+          const tieRes = resolveDevModeTie(nextGame);
+          
+          const topName = botRegistry.get(nextGame.topBotId)?.name || 'Bot 1';
+          const bottomName = botRegistry.get(nextGame.bottomBotId)?.name || 'Bot 2';
+          const pChoiceSym = PIECE_SYMBOLS[nextGame.battleState?.playerChoice || tieRes.playerChoice] || '';
+          const aChoiceSym = PIECE_SYMBOLS[nextGame.battleState?.aiChoice || tieRes.aiChoice] || '';
+          
+          addLog(`🎯 ${bottomName} выбрал: ${pChoiceSym}`);
+          addLog(`🤖 ${topName} выбрал: ${aChoiceSym}`);
+          
+          processMoveResult(nextGame, tieRes);
+        }, thinkDelay);
+      }
       return;
     }
     
-    if (updatedGame.currentPlayer === COMPUTER) {
+    if (updatedGame.devMode) {
+      triggerBotTurn(updatedGame);
+    } else if (updatedGame.currentPlayer === COMPUTER) {
       triggerBotTurn(updatedGame);
     } else {
       const mover = (result.piece && result.piece.owner) || (result.attacker && result.attacker.owner);
@@ -2376,14 +2494,29 @@ export default function App() {
 
   const triggerBotTurn = (currentGame) => {
     setIsBotThinking(true);
-    addLog(tr('logBotThinking'));
     
+    const isTop = currentGame.currentPlayer === COMPUTER;
+    const botId = isTop ? currentGame.topBotId : currentGame.bottomBotId;
+    const bot = botRegistry.get(botId);
+    const botNameStr = botName(bot) || tr('bot');
+    
+    addLog(tr('logBotThinking') + ` (${botNameStr})`);
+    
+    const thinkDelay = isChampMode 
+      ? Math.max(5, (GAME_CONFIG.TIMING.AI_THINK_DELAY || 1000) / (parseFloat(speedParam) || 1))
+      : (GAME_CONFIG.TIMING.AI_THINK_DELAY || 1000);
+      
     setTimeout(() => {
       const updatedGame = { ...currentGame };
-      const result = makeBotMove(updatedGame);
+      let result;
+      if (isTop) {
+        result = makeBotMove(updatedGame);
+      } else {
+        result = makeBottomBotMove(updatedGame);
+      }
       setIsBotThinking(false);
       processMoveResult(updatedGame, result);
-    }, GAME_CONFIG.TIMING.AI_THINK_DELAY || 1000);
+    }, thinkDelay);
   };
 
   const handleChoiceClick = (type) => {
@@ -2438,6 +2571,21 @@ export default function App() {
   };
 
   const handleGameOver = async (winner, reason) => {
+    // Expose final state to window before doing anything
+    if (typeof window !== 'undefined' && window.gameCore) {
+      window.gameCore.gameState = game;
+    }
+
+    if (isChampMode || (game && game.devMode)) {
+      // Just log the result and return.
+      const playerWon = winner === PLAYER;
+      const isDraw = winner === 'draw';
+      const resultText = isDraw ? 'Ничья' : (playerWon ? 'Победа низа (PLAYER)' : 'Победа верха (COMPUTER)');
+      let desc = `Игра окончена: ${resultText}`;
+      addLog(desc);
+      return;
+    }
+
     const playerWon = winner === PLAYER;
     const isDraw = winner === 'draw';
     const skipRating = reason === 'setup_timeout';
@@ -2733,6 +2881,17 @@ export default function App() {
           </ScrollView>
         </SafeAreaView>
       </View>
+    );
+  }
+
+  // --- Bot Championship (admin) ---
+  if (screen === 'botchamp') {
+    return (
+      <BotChampionshipDashboard
+        token={token}
+        baseUrl={BASE_URL}
+        onBack={() => setScreen('lobby')}
+      />
     );
   }
 
@@ -3215,6 +3374,23 @@ export default function App() {
                   <Text style={styles.modeTileDesc}>{tr('botsTileDesc')}</Text>
                 </TouchableOpacity>
               </View>
+              {user.role === 'admin' && (
+                <TouchableOpacity
+                  style={[styles.modeTileHero, { marginTop: 12, borderTopWidth: 1, borderTopColor: '#374151', paddingTop: 12 }]}
+                  activeOpacity={0.85}
+                  onPress={() => {
+                    setProfileMenuOpen(false);
+                    setScreen('botchamp');
+                  }}
+                >
+                  <Text style={styles.modeTileEmoji}>🏆</Text>
+                  <View style={styles.modeTileBody}>
+                    <Text style={styles.modeTileHeroTitle}>Чемпионат ботов</Text>
+                    <Text style={styles.modeTileHeroDesc}>Панель управления и запуск чемпионатов (только для администраторов)</Text>
+                  </View>
+                  <Text style={styles.modeTileChevron}>›</Text>
+                </TouchableOpacity>
+              )}
             </SurfaceCard>
 
             {quickOpponents.length > 0 && (
@@ -3811,7 +3987,7 @@ export default function App() {
       return { who, sym, label };
     };
 
-    const battleBs = game.battleState;
+    const battleBs = game.devMode ? null : game.battleState;
     const tieAttemptsRemaining = battleBs ? tieAttemptsLeft(battleBs.drawRound) : 0;
     const tieLastChance = tieAttemptsRemaining === 1;
     const pvpWaitingOpponent = gameMode === 'pvp' && battleBs && (
@@ -4263,11 +4439,11 @@ export default function App() {
               <OpponentPanel
                 army="blue"
                 compactAlways
-                name={gameMode === 'pvp' ? (pvpRole === 'p1' ? game.p1.nickname : game.p2.nickname) : (user?.nickname || tr('playerFallback'))}
+                name={game.devMode ? (botRegistry.get(game.bottomBotId)?.name || 'Bot 2') : (gameMode === 'pvp' ? (pvpRole === 'p1' ? game.p1.nickname : game.p2.nickname) : (user?.nickname || tr('playerFallback')))}
                 subtitle={isSetup ? setupStatus : (gameMode === 'pvp' ? (pvpRole === 'p1' ? (game.p1.setupDone ? tr('setupDone') : tr('thinking')) : (game.p2.setupDone ? tr('setupDone') : tr('thinking'))) : null)}
                 compact={layout.compact}
-                emoji="👤"
-                avatarUrl={gameMode === 'pvp' ? (pvpRole === 'p1' ? game.p1.avatarUrl : game.p2.avatarUrl) : user?.avatarUrl}
+                emoji={game.devMode ? (botRegistry.get(game.bottomBotId)?.emoji || '🤖') : "👤"}
+                avatarUrl={game.devMode ? resolveAssetUrl(botRegistry.get(game.bottomBotId)?.avatar) : (gameMode === 'pvp' ? (pvpRole === 'p1' ? game.p1.avatarUrl : game.p2.avatarUrl) : user?.avatarUrl)}
                 pieceCount={playerPieceCount}
                 turnLabel={
                   isSetup
@@ -4289,10 +4465,10 @@ export default function App() {
               <OpponentPanel
                 army="red"
                 compactAlways
-                name={gameMode === 'pvp' ? (pvpRole === 'p1' ? game.p2.nickname : game.p1.nickname) : (botName(activeBot) || tr('bot'))}
-                subtitle={gameMode === 'pvp' ? `${pvpRole === 'p1' ? game.p2.ratingMmr : game.p1.ratingMmr} MMR` : botDesc(activeBot)}
-                emoji={gameMode === 'pvp' ? '👤' : activeBot?.emoji}
-                avatarUrl={gameMode === 'pvp' ? (pvpRole === 'p1' ? game.p2.avatarUrl : game.p1.avatarUrl) : resolveAssetUrl(activeBot?.avatar)}
+                name={game.devMode ? (botRegistry.get(game.topBotId)?.name || 'Bot 1') : (gameMode === 'pvp' ? (pvpRole === 'p1' ? game.p2.nickname : game.p1.nickname) : (botName(activeBot) || tr('bot')))}
+                subtitle={game.devMode ? (botRegistry.get(game.topBotId)?.shortDescription || '') : (gameMode === 'pvp' ? `${pvpRole === 'p1' ? game.p2.ratingMmr : game.p1.ratingMmr} MMR` : botDesc(activeBot))}
+                emoji={game.devMode ? (botRegistry.get(game.topBotId)?.emoji || '🤖') : (gameMode === 'pvp' ? '👤' : activeBot?.emoji)}
+                avatarUrl={game.devMode ? resolveAssetUrl(botRegistry.get(game.topBotId)?.avatar) : (gameMode === 'pvp' ? (pvpRole === 'p1' ? game.p2.avatarUrl : game.p1.avatarUrl) : resolveAssetUrl(activeBot?.avatar))}
                 compact={layout.compact}
                 pieceCount={botPieceCount}
                 turnLabel={

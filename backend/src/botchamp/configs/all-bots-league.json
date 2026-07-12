@@ -1,0 +1,1799 @@
+{
+  "name": "Полная лига — все боты (20 команд, 2 круга)",
+  "description": "Чемпионат среди всех доступных ботов. Футбольный формат: каждый играет с каждым дважды — дома (сверху) и в гостях (снизу).",
+  "format": "double-round-robin",
+  "teams": [
+    {
+      "id": "rabbit",
+      "name": "Зайчик"
+    },
+    {
+      "id": "raccoon",
+      "name": "Енотик"
+    },
+    {
+      "id": "fox",
+      "name": "Лисёнок"
+    },
+    {
+      "id": "owl",
+      "name": "Совёнок"
+    },
+    {
+      "id": "lion",
+      "name": "Львёнок"
+    },
+    {
+      "id": "wolf",
+      "name": "Волчонок"
+    },
+    {
+      "id": "hedgehog",
+      "name": "Ёжик"
+    },
+    {
+      "id": "raven",
+      "name": "Воронёнок"
+    },
+    {
+      "id": "obezyanka",
+      "name": "Обезьянка"
+    },
+    {
+      "id": "lenivchik",
+      "name": "Ленивчик"
+    },
+    {
+      "id": "leopardik",
+      "name": "Леопардик"
+    },
+    {
+      "id": "utenok",
+      "name": "Утёнок"
+    },
+    {
+      "id": "akulenok",
+      "name": "Акулёнок"
+    },
+    {
+      "id": "bobrenok",
+      "name": "Бобрёнок"
+    },
+    {
+      "id": "homyachok",
+      "name": "Хомячок"
+    },
+    {
+      "id": "losenok",
+      "name": "Лосёнок"
+    },
+    {
+      "id": "golubenok",
+      "name": "Голубёнок"
+    },
+    {
+      "id": "medvezhonok",
+      "name": "Медвежонок"
+    },
+    {
+      "id": "orlenok",
+      "name": "Орлёнок"
+    },
+    {
+      "id": "kapibarysh",
+      "name": "Капибарыш"
+    }
+  ],
+  "rounds": [
+    {
+      "round": 1,
+      "matches": [
+        {
+          "top": "rabbit",
+          "bottom": "kapibarysh"
+        },
+        {
+          "top": "orlenok",
+          "bottom": "raccoon"
+        },
+        {
+          "top": "fox",
+          "bottom": "medvezhonok"
+        },
+        {
+          "top": "golubenok",
+          "bottom": "owl"
+        },
+        {
+          "top": "lion",
+          "bottom": "losenok"
+        },
+        {
+          "top": "homyachok",
+          "bottom": "wolf"
+        },
+        {
+          "top": "hedgehog",
+          "bottom": "bobrenok"
+        },
+        {
+          "top": "akulenok",
+          "bottom": "raven"
+        },
+        {
+          "top": "obezyanka",
+          "bottom": "utenok"
+        },
+        {
+          "top": "leopardik",
+          "bottom": "lenivchik"
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "matches": [
+        {
+          "top": "orlenok",
+          "bottom": "rabbit"
+        },
+        {
+          "top": "kapibarysh",
+          "bottom": "medvezhonok"
+        },
+        {
+          "top": "golubenok",
+          "bottom": "raccoon"
+        },
+        {
+          "top": "fox",
+          "bottom": "losenok"
+        },
+        {
+          "top": "homyachok",
+          "bottom": "owl"
+        },
+        {
+          "top": "lion",
+          "bottom": "bobrenok"
+        },
+        {
+          "top": "akulenok",
+          "bottom": "wolf"
+        },
+        {
+          "top": "hedgehog",
+          "bottom": "utenok"
+        },
+        {
+          "top": "leopardik",
+          "bottom": "raven"
+        },
+        {
+          "top": "obezyanka",
+          "bottom": "lenivchik"
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "matches": [
+        {
+          "top": "rabbit",
+          "bottom": "medvezhonok"
+        },
+        {
+          "top": "golubenok",
+          "bottom": "orlenok"
+        },
+        {
+          "top": "kapibarysh",
+          "bottom": "losenok"
+        },
+        {
+          "top": "homyachok",
+          "bottom": "raccoon"
+        },
+        {
+          "top": "fox",
+          "bottom": "bobrenok"
+        },
+        {
+          "top": "akulenok",
+          "bottom": "owl"
+        },
+        {
+          "top": "lion",
+          "bottom": "utenok"
+        },
+        {
+          "top": "leopardik",
+          "bottom": "wolf"
+        },
+        {
+          "top": "hedgehog",
+          "bottom": "lenivchik"
+        },
+        {
+          "top": "obezyanka",
+          "bottom": "raven"
+        }
+      ]
+    },
+    {
+      "round": 4,
+      "matches": [
+        {
+          "top": "golubenok",
+          "bottom": "rabbit"
+        },
+        {
+          "top": "medvezhonok",
+          "bottom": "losenok"
+        },
+        {
+          "top": "homyachok",
+          "bottom": "orlenok"
+        },
+        {
+          "top": "kapibarysh",
+          "bottom": "bobrenok"
+        },
+        {
+          "top": "akulenok",
+          "bottom": "raccoon"
+        },
+        {
+          "top": "fox",
+          "bottom": "utenok"
+        },
+        {
+          "top": "leopardik",
+          "bottom": "owl"
+        },
+        {
+          "top": "lion",
+          "bottom": "lenivchik"
+        },
+        {
+          "top": "obezyanka",
+          "bottom": "wolf"
+        },
+        {
+          "top": "hedgehog",
+          "bottom": "raven"
+        }
+      ]
+    },
+    {
+      "round": 5,
+      "matches": [
+        {
+          "top": "rabbit",
+          "bottom": "losenok"
+        },
+        {
+          "top": "homyachok",
+          "bottom": "golubenok"
+        },
+        {
+          "top": "medvezhonok",
+          "bottom": "bobrenok"
+        },
+        {
+          "top": "akulenok",
+          "bottom": "orlenok"
+        },
+        {
+          "top": "kapibarysh",
+          "bottom": "utenok"
+        },
+        {
+          "top": "leopardik",
+          "bottom": "raccoon"
+        },
+        {
+          "top": "fox",
+          "bottom": "lenivchik"
+        },
+        {
+          "top": "obezyanka",
+          "bottom": "owl"
+        },
+        {
+          "top": "lion",
+          "bottom": "raven"
+        },
+        {
+          "top": "hedgehog",
+          "bottom": "wolf"
+        }
+      ]
+    },
+    {
+      "round": 6,
+      "matches": [
+        {
+          "top": "homyachok",
+          "bottom": "rabbit"
+        },
+        {
+          "top": "losenok",
+          "bottom": "bobrenok"
+        },
+        {
+          "top": "akulenok",
+          "bottom": "golubenok"
+        },
+        {
+          "top": "medvezhonok",
+          "bottom": "utenok"
+        },
+        {
+          "top": "leopardik",
+          "bottom": "orlenok"
+        },
+        {
+          "top": "kapibarysh",
+          "bottom": "lenivchik"
+        },
+        {
+          "top": "obezyanka",
+          "bottom": "raccoon"
+        },
+        {
+          "top": "fox",
+          "bottom": "raven"
+        },
+        {
+          "top": "hedgehog",
+          "bottom": "owl"
+        },
+        {
+          "top": "lion",
+          "bottom": "wolf"
+        }
+      ]
+    },
+    {
+      "round": 7,
+      "matches": [
+        {
+          "top": "rabbit",
+          "bottom": "bobrenok"
+        },
+        {
+          "top": "akulenok",
+          "bottom": "homyachok"
+        },
+        {
+          "top": "losenok",
+          "bottom": "utenok"
+        },
+        {
+          "top": "leopardik",
+          "bottom": "golubenok"
+        },
+        {
+          "top": "medvezhonok",
+          "bottom": "lenivchik"
+        },
+        {
+          "top": "obezyanka",
+          "bottom": "orlenok"
+        },
+        {
+          "top": "kapibarysh",
+          "bottom": "raven"
+        },
+        {
+          "top": "hedgehog",
+          "bottom": "raccoon"
+        },
+        {
+          "top": "fox",
+          "bottom": "wolf"
+        },
+        {
+          "top": "lion",
+          "bottom": "owl"
+        }
+      ]
+    },
+    {
+      "round": 8,
+      "matches": [
+        {
+          "top": "akulenok",
+          "bottom": "rabbit"
+        },
+        {
+          "top": "bobrenok",
+          "bottom": "utenok"
+        },
+        {
+          "top": "leopardik",
+          "bottom": "homyachok"
+        },
+        {
+          "top": "losenok",
+          "bottom": "lenivchik"
+        },
+        {
+          "top": "obezyanka",
+          "bottom": "golubenok"
+        },
+        {
+          "top": "medvezhonok",
+          "bottom": "raven"
+        },
+        {
+          "top": "hedgehog",
+          "bottom": "orlenok"
+        },
+        {
+          "top": "kapibarysh",
+          "bottom": "wolf"
+        },
+        {
+          "top": "lion",
+          "bottom": "raccoon"
+        },
+        {
+          "top": "fox",
+          "bottom": "owl"
+        }
+      ]
+    },
+    {
+      "round": 9,
+      "matches": [
+        {
+          "top": "rabbit",
+          "bottom": "utenok"
+        },
+        {
+          "top": "leopardik",
+          "bottom": "akulenok"
+        },
+        {
+          "top": "bobrenok",
+          "bottom": "lenivchik"
+        },
+        {
+          "top": "obezyanka",
+          "bottom": "homyachok"
+        },
+        {
+          "top": "losenok",
+          "bottom": "raven"
+        },
+        {
+          "top": "hedgehog",
+          "bottom": "golubenok"
+        },
+        {
+          "top": "medvezhonok",
+          "bottom": "wolf"
+        },
+        {
+          "top": "lion",
+          "bottom": "orlenok"
+        },
+        {
+          "top": "kapibarysh",
+          "bottom": "owl"
+        },
+        {
+          "top": "fox",
+          "bottom": "raccoon"
+        }
+      ]
+    },
+    {
+      "round": 10,
+      "matches": [
+        {
+          "top": "leopardik",
+          "bottom": "rabbit"
+        },
+        {
+          "top": "utenok",
+          "bottom": "lenivchik"
+        },
+        {
+          "top": "obezyanka",
+          "bottom": "akulenok"
+        },
+        {
+          "top": "bobrenok",
+          "bottom": "raven"
+        },
+        {
+          "top": "hedgehog",
+          "bottom": "homyachok"
+        },
+        {
+          "top": "losenok",
+          "bottom": "wolf"
+        },
+        {
+          "top": "lion",
+          "bottom": "golubenok"
+        },
+        {
+          "top": "medvezhonok",
+          "bottom": "owl"
+        },
+        {
+          "top": "fox",
+          "bottom": "orlenok"
+        },
+        {
+          "top": "kapibarysh",
+          "bottom": "raccoon"
+        }
+      ]
+    },
+    {
+      "round": 11,
+      "matches": [
+        {
+          "top": "rabbit",
+          "bottom": "lenivchik"
+        },
+        {
+          "top": "obezyanka",
+          "bottom": "leopardik"
+        },
+        {
+          "top": "utenok",
+          "bottom": "raven"
+        },
+        {
+          "top": "hedgehog",
+          "bottom": "akulenok"
+        },
+        {
+          "top": "bobrenok",
+          "bottom": "wolf"
+        },
+        {
+          "top": "lion",
+          "bottom": "homyachok"
+        },
+        {
+          "top": "losenok",
+          "bottom": "owl"
+        },
+        {
+          "top": "fox",
+          "bottom": "golubenok"
+        },
+        {
+          "top": "medvezhonok",
+          "bottom": "raccoon"
+        },
+        {
+          "top": "kapibarysh",
+          "bottom": "orlenok"
+        }
+      ]
+    },
+    {
+      "round": 12,
+      "matches": [
+        {
+          "top": "obezyanka",
+          "bottom": "rabbit"
+        },
+        {
+          "top": "lenivchik",
+          "bottom": "raven"
+        },
+        {
+          "top": "hedgehog",
+          "bottom": "leopardik"
+        },
+        {
+          "top": "utenok",
+          "bottom": "wolf"
+        },
+        {
+          "top": "lion",
+          "bottom": "akulenok"
+        },
+        {
+          "top": "bobrenok",
+          "bottom": "owl"
+        },
+        {
+          "top": "fox",
+          "bottom": "homyachok"
+        },
+        {
+          "top": "losenok",
+          "bottom": "raccoon"
+        },
+        {
+          "top": "kapibarysh",
+          "bottom": "golubenok"
+        },
+        {
+          "top": "medvezhonok",
+          "bottom": "orlenok"
+        }
+      ]
+    },
+    {
+      "round": 13,
+      "matches": [
+        {
+          "top": "rabbit",
+          "bottom": "raven"
+        },
+        {
+          "top": "hedgehog",
+          "bottom": "obezyanka"
+        },
+        {
+          "top": "lenivchik",
+          "bottom": "wolf"
+        },
+        {
+          "top": "lion",
+          "bottom": "leopardik"
+        },
+        {
+          "top": "utenok",
+          "bottom": "owl"
+        },
+        {
+          "top": "fox",
+          "bottom": "akulenok"
+        },
+        {
+          "top": "bobrenok",
+          "bottom": "raccoon"
+        },
+        {
+          "top": "kapibarysh",
+          "bottom": "homyachok"
+        },
+        {
+          "top": "losenok",
+          "bottom": "orlenok"
+        },
+        {
+          "top": "medvezhonok",
+          "bottom": "golubenok"
+        }
+      ]
+    },
+    {
+      "round": 14,
+      "matches": [
+        {
+          "top": "hedgehog",
+          "bottom": "rabbit"
+        },
+        {
+          "top": "raven",
+          "bottom": "wolf"
+        },
+        {
+          "top": "lion",
+          "bottom": "obezyanka"
+        },
+        {
+          "top": "lenivchik",
+          "bottom": "owl"
+        },
+        {
+          "top": "fox",
+          "bottom": "leopardik"
+        },
+        {
+          "top": "utenok",
+          "bottom": "raccoon"
+        },
+        {
+          "top": "kapibarysh",
+          "bottom": "akulenok"
+        },
+        {
+          "top": "bobrenok",
+          "bottom": "orlenok"
+        },
+        {
+          "top": "medvezhonok",
+          "bottom": "homyachok"
+        },
+        {
+          "top": "losenok",
+          "bottom": "golubenok"
+        }
+      ]
+    },
+    {
+      "round": 15,
+      "matches": [
+        {
+          "top": "rabbit",
+          "bottom": "wolf"
+        },
+        {
+          "top": "lion",
+          "bottom": "hedgehog"
+        },
+        {
+          "top": "raven",
+          "bottom": "owl"
+        },
+        {
+          "top": "fox",
+          "bottom": "obezyanka"
+        },
+        {
+          "top": "lenivchik",
+          "bottom": "raccoon"
+        },
+        {
+          "top": "kapibarysh",
+          "bottom": "leopardik"
+        },
+        {
+          "top": "utenok",
+          "bottom": "orlenok"
+        },
+        {
+          "top": "medvezhonok",
+          "bottom": "akulenok"
+        },
+        {
+          "top": "bobrenok",
+          "bottom": "golubenok"
+        },
+        {
+          "top": "losenok",
+          "bottom": "homyachok"
+        }
+      ]
+    },
+    {
+      "round": 16,
+      "matches": [
+        {
+          "top": "lion",
+          "bottom": "rabbit"
+        },
+        {
+          "top": "wolf",
+          "bottom": "owl"
+        },
+        {
+          "top": "fox",
+          "bottom": "hedgehog"
+        },
+        {
+          "top": "raven",
+          "bottom": "raccoon"
+        },
+        {
+          "top": "kapibarysh",
+          "bottom": "obezyanka"
+        },
+        {
+          "top": "lenivchik",
+          "bottom": "orlenok"
+        },
+        {
+          "top": "medvezhonok",
+          "bottom": "leopardik"
+        },
+        {
+          "top": "utenok",
+          "bottom": "golubenok"
+        },
+        {
+          "top": "losenok",
+          "bottom": "akulenok"
+        },
+        {
+          "top": "bobrenok",
+          "bottom": "homyachok"
+        }
+      ]
+    },
+    {
+      "round": 17,
+      "matches": [
+        {
+          "top": "rabbit",
+          "bottom": "owl"
+        },
+        {
+          "top": "fox",
+          "bottom": "lion"
+        },
+        {
+          "top": "wolf",
+          "bottom": "raccoon"
+        },
+        {
+          "top": "kapibarysh",
+          "bottom": "hedgehog"
+        },
+        {
+          "top": "raven",
+          "bottom": "orlenok"
+        },
+        {
+          "top": "medvezhonok",
+          "bottom": "obezyanka"
+        },
+        {
+          "top": "lenivchik",
+          "bottom": "golubenok"
+        },
+        {
+          "top": "losenok",
+          "bottom": "leopardik"
+        },
+        {
+          "top": "utenok",
+          "bottom": "homyachok"
+        },
+        {
+          "top": "bobrenok",
+          "bottom": "akulenok"
+        }
+      ]
+    },
+    {
+      "round": 18,
+      "matches": [
+        {
+          "top": "fox",
+          "bottom": "rabbit"
+        },
+        {
+          "top": "owl",
+          "bottom": "raccoon"
+        },
+        {
+          "top": "kapibarysh",
+          "bottom": "lion"
+        },
+        {
+          "top": "wolf",
+          "bottom": "orlenok"
+        },
+        {
+          "top": "medvezhonok",
+          "bottom": "hedgehog"
+        },
+        {
+          "top": "raven",
+          "bottom": "golubenok"
+        },
+        {
+          "top": "losenok",
+          "bottom": "obezyanka"
+        },
+        {
+          "top": "lenivchik",
+          "bottom": "homyachok"
+        },
+        {
+          "top": "bobrenok",
+          "bottom": "leopardik"
+        },
+        {
+          "top": "utenok",
+          "bottom": "akulenok"
+        }
+      ]
+    },
+    {
+      "round": 19,
+      "matches": [
+        {
+          "top": "rabbit",
+          "bottom": "raccoon"
+        },
+        {
+          "top": "kapibarysh",
+          "bottom": "fox"
+        },
+        {
+          "top": "owl",
+          "bottom": "orlenok"
+        },
+        {
+          "top": "medvezhonok",
+          "bottom": "lion"
+        },
+        {
+          "top": "wolf",
+          "bottom": "golubenok"
+        },
+        {
+          "top": "losenok",
+          "bottom": "hedgehog"
+        },
+        {
+          "top": "raven",
+          "bottom": "homyachok"
+        },
+        {
+          "top": "bobrenok",
+          "bottom": "obezyanka"
+        },
+        {
+          "top": "lenivchik",
+          "bottom": "akulenok"
+        },
+        {
+          "top": "utenok",
+          "bottom": "leopardik"
+        }
+      ]
+    },
+    {
+      "round": 20,
+      "matches": [
+        {
+          "top": "kapibarysh",
+          "bottom": "rabbit"
+        },
+        {
+          "top": "raccoon",
+          "bottom": "orlenok"
+        },
+        {
+          "top": "medvezhonok",
+          "bottom": "fox"
+        },
+        {
+          "top": "owl",
+          "bottom": "golubenok"
+        },
+        {
+          "top": "losenok",
+          "bottom": "lion"
+        },
+        {
+          "top": "wolf",
+          "bottom": "homyachok"
+        },
+        {
+          "top": "bobrenok",
+          "bottom": "hedgehog"
+        },
+        {
+          "top": "raven",
+          "bottom": "akulenok"
+        },
+        {
+          "top": "utenok",
+          "bottom": "obezyanka"
+        },
+        {
+          "top": "lenivchik",
+          "bottom": "leopardik"
+        }
+      ]
+    },
+    {
+      "round": 21,
+      "matches": [
+        {
+          "top": "rabbit",
+          "bottom": "orlenok"
+        },
+        {
+          "top": "medvezhonok",
+          "bottom": "kapibarysh"
+        },
+        {
+          "top": "raccoon",
+          "bottom": "golubenok"
+        },
+        {
+          "top": "losenok",
+          "bottom": "fox"
+        },
+        {
+          "top": "owl",
+          "bottom": "homyachok"
+        },
+        {
+          "top": "bobrenok",
+          "bottom": "lion"
+        },
+        {
+          "top": "wolf",
+          "bottom": "akulenok"
+        },
+        {
+          "top": "utenok",
+          "bottom": "hedgehog"
+        },
+        {
+          "top": "raven",
+          "bottom": "leopardik"
+        },
+        {
+          "top": "lenivchik",
+          "bottom": "obezyanka"
+        }
+      ]
+    },
+    {
+      "round": 22,
+      "matches": [
+        {
+          "top": "medvezhonok",
+          "bottom": "rabbit"
+        },
+        {
+          "top": "orlenok",
+          "bottom": "golubenok"
+        },
+        {
+          "top": "losenok",
+          "bottom": "kapibarysh"
+        },
+        {
+          "top": "raccoon",
+          "bottom": "homyachok"
+        },
+        {
+          "top": "bobrenok",
+          "bottom": "fox"
+        },
+        {
+          "top": "owl",
+          "bottom": "akulenok"
+        },
+        {
+          "top": "utenok",
+          "bottom": "lion"
+        },
+        {
+          "top": "wolf",
+          "bottom": "leopardik"
+        },
+        {
+          "top": "lenivchik",
+          "bottom": "hedgehog"
+        },
+        {
+          "top": "raven",
+          "bottom": "obezyanka"
+        }
+      ]
+    },
+    {
+      "round": 23,
+      "matches": [
+        {
+          "top": "rabbit",
+          "bottom": "golubenok"
+        },
+        {
+          "top": "losenok",
+          "bottom": "medvezhonok"
+        },
+        {
+          "top": "orlenok",
+          "bottom": "homyachok"
+        },
+        {
+          "top": "bobrenok",
+          "bottom": "kapibarysh"
+        },
+        {
+          "top": "raccoon",
+          "bottom": "akulenok"
+        },
+        {
+          "top": "utenok",
+          "bottom": "fox"
+        },
+        {
+          "top": "owl",
+          "bottom": "leopardik"
+        },
+        {
+          "top": "lenivchik",
+          "bottom": "lion"
+        },
+        {
+          "top": "wolf",
+          "bottom": "obezyanka"
+        },
+        {
+          "top": "raven",
+          "bottom": "hedgehog"
+        }
+      ]
+    },
+    {
+      "round": 24,
+      "matches": [
+        {
+          "top": "losenok",
+          "bottom": "rabbit"
+        },
+        {
+          "top": "golubenok",
+          "bottom": "homyachok"
+        },
+        {
+          "top": "bobrenok",
+          "bottom": "medvezhonok"
+        },
+        {
+          "top": "orlenok",
+          "bottom": "akulenok"
+        },
+        {
+          "top": "utenok",
+          "bottom": "kapibarysh"
+        },
+        {
+          "top": "raccoon",
+          "bottom": "leopardik"
+        },
+        {
+          "top": "lenivchik",
+          "bottom": "fox"
+        },
+        {
+          "top": "owl",
+          "bottom": "obezyanka"
+        },
+        {
+          "top": "raven",
+          "bottom": "lion"
+        },
+        {
+          "top": "wolf",
+          "bottom": "hedgehog"
+        }
+      ]
+    },
+    {
+      "round": 25,
+      "matches": [
+        {
+          "top": "rabbit",
+          "bottom": "homyachok"
+        },
+        {
+          "top": "bobrenok",
+          "bottom": "losenok"
+        },
+        {
+          "top": "golubenok",
+          "bottom": "akulenok"
+        },
+        {
+          "top": "utenok",
+          "bottom": "medvezhonok"
+        },
+        {
+          "top": "orlenok",
+          "bottom": "leopardik"
+        },
+        {
+          "top": "lenivchik",
+          "bottom": "kapibarysh"
+        },
+        {
+          "top": "raccoon",
+          "bottom": "obezyanka"
+        },
+        {
+          "top": "raven",
+          "bottom": "fox"
+        },
+        {
+          "top": "owl",
+          "bottom": "hedgehog"
+        },
+        {
+          "top": "wolf",
+          "bottom": "lion"
+        }
+      ]
+    },
+    {
+      "round": 26,
+      "matches": [
+        {
+          "top": "bobrenok",
+          "bottom": "rabbit"
+        },
+        {
+          "top": "homyachok",
+          "bottom": "akulenok"
+        },
+        {
+          "top": "utenok",
+          "bottom": "losenok"
+        },
+        {
+          "top": "golubenok",
+          "bottom": "leopardik"
+        },
+        {
+          "top": "lenivchik",
+          "bottom": "medvezhonok"
+        },
+        {
+          "top": "orlenok",
+          "bottom": "obezyanka"
+        },
+        {
+          "top": "raven",
+          "bottom": "kapibarysh"
+        },
+        {
+          "top": "raccoon",
+          "bottom": "hedgehog"
+        },
+        {
+          "top": "wolf",
+          "bottom": "fox"
+        },
+        {
+          "top": "owl",
+          "bottom": "lion"
+        }
+      ]
+    },
+    {
+      "round": 27,
+      "matches": [
+        {
+          "top": "rabbit",
+          "bottom": "akulenok"
+        },
+        {
+          "top": "utenok",
+          "bottom": "bobrenok"
+        },
+        {
+          "top": "homyachok",
+          "bottom": "leopardik"
+        },
+        {
+          "top": "lenivchik",
+          "bottom": "losenok"
+        },
+        {
+          "top": "golubenok",
+          "bottom": "obezyanka"
+        },
+        {
+          "top": "raven",
+          "bottom": "medvezhonok"
+        },
+        {
+          "top": "orlenok",
+          "bottom": "hedgehog"
+        },
+        {
+          "top": "wolf",
+          "bottom": "kapibarysh"
+        },
+        {
+          "top": "raccoon",
+          "bottom": "lion"
+        },
+        {
+          "top": "owl",
+          "bottom": "fox"
+        }
+      ]
+    },
+    {
+      "round": 28,
+      "matches": [
+        {
+          "top": "utenok",
+          "bottom": "rabbit"
+        },
+        {
+          "top": "akulenok",
+          "bottom": "leopardik"
+        },
+        {
+          "top": "lenivchik",
+          "bottom": "bobrenok"
+        },
+        {
+          "top": "homyachok",
+          "bottom": "obezyanka"
+        },
+        {
+          "top": "raven",
+          "bottom": "losenok"
+        },
+        {
+          "top": "golubenok",
+          "bottom": "hedgehog"
+        },
+        {
+          "top": "wolf",
+          "bottom": "medvezhonok"
+        },
+        {
+          "top": "orlenok",
+          "bottom": "lion"
+        },
+        {
+          "top": "owl",
+          "bottom": "kapibarysh"
+        },
+        {
+          "top": "raccoon",
+          "bottom": "fox"
+        }
+      ]
+    },
+    {
+      "round": 29,
+      "matches": [
+        {
+          "top": "rabbit",
+          "bottom": "leopardik"
+        },
+        {
+          "top": "lenivchik",
+          "bottom": "utenok"
+        },
+        {
+          "top": "akulenok",
+          "bottom": "obezyanka"
+        },
+        {
+          "top": "raven",
+          "bottom": "bobrenok"
+        },
+        {
+          "top": "homyachok",
+          "bottom": "hedgehog"
+        },
+        {
+          "top": "wolf",
+          "bottom": "losenok"
+        },
+        {
+          "top": "golubenok",
+          "bottom": "lion"
+        },
+        {
+          "top": "owl",
+          "bottom": "medvezhonok"
+        },
+        {
+          "top": "orlenok",
+          "bottom": "fox"
+        },
+        {
+          "top": "raccoon",
+          "bottom": "kapibarysh"
+        }
+      ]
+    },
+    {
+      "round": 30,
+      "matches": [
+        {
+          "top": "lenivchik",
+          "bottom": "rabbit"
+        },
+        {
+          "top": "leopardik",
+          "bottom": "obezyanka"
+        },
+        {
+          "top": "raven",
+          "bottom": "utenok"
+        },
+        {
+          "top": "akulenok",
+          "bottom": "hedgehog"
+        },
+        {
+          "top": "wolf",
+          "bottom": "bobrenok"
+        },
+        {
+          "top": "homyachok",
+          "bottom": "lion"
+        },
+        {
+          "top": "owl",
+          "bottom": "losenok"
+        },
+        {
+          "top": "golubenok",
+          "bottom": "fox"
+        },
+        {
+          "top": "raccoon",
+          "bottom": "medvezhonok"
+        },
+        {
+          "top": "orlenok",
+          "bottom": "kapibarysh"
+        }
+      ]
+    },
+    {
+      "round": 31,
+      "matches": [
+        {
+          "top": "rabbit",
+          "bottom": "obezyanka"
+        },
+        {
+          "top": "raven",
+          "bottom": "lenivchik"
+        },
+        {
+          "top": "leopardik",
+          "bottom": "hedgehog"
+        },
+        {
+          "top": "wolf",
+          "bottom": "utenok"
+        },
+        {
+          "top": "akulenok",
+          "bottom": "lion"
+        },
+        {
+          "top": "owl",
+          "bottom": "bobrenok"
+        },
+        {
+          "top": "homyachok",
+          "bottom": "fox"
+        },
+        {
+          "top": "raccoon",
+          "bottom": "losenok"
+        },
+        {
+          "top": "golubenok",
+          "bottom": "kapibarysh"
+        },
+        {
+          "top": "orlenok",
+          "bottom": "medvezhonok"
+        }
+      ]
+    },
+    {
+      "round": 32,
+      "matches": [
+        {
+          "top": "raven",
+          "bottom": "rabbit"
+        },
+        {
+          "top": "obezyanka",
+          "bottom": "hedgehog"
+        },
+        {
+          "top": "wolf",
+          "bottom": "lenivchik"
+        },
+        {
+          "top": "leopardik",
+          "bottom": "lion"
+        },
+        {
+          "top": "owl",
+          "bottom": "utenok"
+        },
+        {
+          "top": "akulenok",
+          "bottom": "fox"
+        },
+        {
+          "top": "raccoon",
+          "bottom": "bobrenok"
+        },
+        {
+          "top": "homyachok",
+          "bottom": "kapibarysh"
+        },
+        {
+          "top": "orlenok",
+          "bottom": "losenok"
+        },
+        {
+          "top": "golubenok",
+          "bottom": "medvezhonok"
+        }
+      ]
+    },
+    {
+      "round": 33,
+      "matches": [
+        {
+          "top": "rabbit",
+          "bottom": "hedgehog"
+        },
+        {
+          "top": "wolf",
+          "bottom": "raven"
+        },
+        {
+          "top": "obezyanka",
+          "bottom": "lion"
+        },
+        {
+          "top": "owl",
+          "bottom": "lenivchik"
+        },
+        {
+          "top": "leopardik",
+          "bottom": "fox"
+        },
+        {
+          "top": "raccoon",
+          "bottom": "utenok"
+        },
+        {
+          "top": "akulenok",
+          "bottom": "kapibarysh"
+        },
+        {
+          "top": "orlenok",
+          "bottom": "bobrenok"
+        },
+        {
+          "top": "homyachok",
+          "bottom": "medvezhonok"
+        },
+        {
+          "top": "golubenok",
+          "bottom": "losenok"
+        }
+      ]
+    },
+    {
+      "round": 34,
+      "matches": [
+        {
+          "top": "wolf",
+          "bottom": "rabbit"
+        },
+        {
+          "top": "hedgehog",
+          "bottom": "lion"
+        },
+        {
+          "top": "owl",
+          "bottom": "raven"
+        },
+        {
+          "top": "obezyanka",
+          "bottom": "fox"
+        },
+        {
+          "top": "raccoon",
+          "bottom": "lenivchik"
+        },
+        {
+          "top": "leopardik",
+          "bottom": "kapibarysh"
+        },
+        {
+          "top": "orlenok",
+          "bottom": "utenok"
+        },
+        {
+          "top": "akulenok",
+          "bottom": "medvezhonok"
+        },
+        {
+          "top": "golubenok",
+          "bottom": "bobrenok"
+        },
+        {
+          "top": "homyachok",
+          "bottom": "losenok"
+        }
+      ]
+    },
+    {
+      "round": 35,
+      "matches": [
+        {
+          "top": "rabbit",
+          "bottom": "lion"
+        },
+        {
+          "top": "owl",
+          "bottom": "wolf"
+        },
+        {
+          "top": "hedgehog",
+          "bottom": "fox"
+        },
+        {
+          "top": "raccoon",
+          "bottom": "raven"
+        },
+        {
+          "top": "obezyanka",
+          "bottom": "kapibarysh"
+        },
+        {
+          "top": "orlenok",
+          "bottom": "lenivchik"
+        },
+        {
+          "top": "leopardik",
+          "bottom": "medvezhonok"
+        },
+        {
+          "top": "golubenok",
+          "bottom": "utenok"
+        },
+        {
+          "top": "akulenok",
+          "bottom": "losenok"
+        },
+        {
+          "top": "homyachok",
+          "bottom": "bobrenok"
+        }
+      ]
+    },
+    {
+      "round": 36,
+      "matches": [
+        {
+          "top": "owl",
+          "bottom": "rabbit"
+        },
+        {
+          "top": "lion",
+          "bottom": "fox"
+        },
+        {
+          "top": "raccoon",
+          "bottom": "wolf"
+        },
+        {
+          "top": "hedgehog",
+          "bottom": "kapibarysh"
+        },
+        {
+          "top": "orlenok",
+          "bottom": "raven"
+        },
+        {
+          "top": "obezyanka",
+          "bottom": "medvezhonok"
+        },
+        {
+          "top": "golubenok",
+          "bottom": "lenivchik"
+        },
+        {
+          "top": "leopardik",
+          "bottom": "losenok"
+        },
+        {
+          "top": "homyachok",
+          "bottom": "utenok"
+        },
+        {
+          "top": "akulenok",
+          "bottom": "bobrenok"
+        }
+      ]
+    },
+    {
+      "round": 37,
+      "matches": [
+        {
+          "top": "rabbit",
+          "bottom": "fox"
+        },
+        {
+          "top": "raccoon",
+          "bottom": "owl"
+        },
+        {
+          "top": "lion",
+          "bottom": "kapibarysh"
+        },
+        {
+          "top": "orlenok",
+          "bottom": "wolf"
+        },
+        {
+          "top": "hedgehog",
+          "bottom": "medvezhonok"
+        },
+        {
+          "top": "golubenok",
+          "bottom": "raven"
+        },
+        {
+          "top": "obezyanka",
+          "bottom": "losenok"
+        },
+        {
+          "top": "homyachok",
+          "bottom": "lenivchik"
+        },
+        {
+          "top": "leopardik",
+          "bottom": "bobrenok"
+        },
+        {
+          "top": "akulenok",
+          "bottom": "utenok"
+        }
+      ]
+    },
+    {
+      "round": 38,
+      "matches": [
+        {
+          "top": "raccoon",
+          "bottom": "rabbit"
+        },
+        {
+          "top": "fox",
+          "bottom": "kapibarysh"
+        },
+        {
+          "top": "orlenok",
+          "bottom": "owl"
+        },
+        {
+          "top": "lion",
+          "bottom": "medvezhonok"
+        },
+        {
+          "top": "golubenok",
+          "bottom": "wolf"
+        },
+        {
+          "top": "hedgehog",
+          "bottom": "losenok"
+        },
+        {
+          "top": "homyachok",
+          "bottom": "raven"
+        },
+        {
+          "top": "obezyanka",
+          "bottom": "bobrenok"
+        },
+        {
+          "top": "akulenok",
+          "bottom": "lenivchik"
+        },
+        {
+          "top": "leopardik",
+          "bottom": "utenok"
+        }
+      ]
+    }
+  ]
+}

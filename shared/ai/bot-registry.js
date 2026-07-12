@@ -19,12 +19,12 @@
 const BOT_METADATA_OVERRIDES = {
     // Easy (Зелёные)
     rabbit: { name: 'Зайчик', emoji: '🐰', shortDescription: 'Реактивная эвристика', difficultyLabel: 'Лёгкий', tier: 'easy', stars: 1 },
-    kimi_2_5: { name: 'Хомячок', emoji: '🐹', shortDescription: 'Случайные шаги и простая защита', difficultyLabel: 'Лёгкий', tier: 'easy', stars: 1 },
-    gemini_3_1_pro: { name: 'Утёнок', emoji: '🦆', shortDescription: 'Базовый эвристический поиск', difficultyLabel: 'Лёгкий', tier: 'easy', stars: 1 },
-    haiku_4_5: { name: 'Голубёнок', emoji: '🐦', shortDescription: 'Пассивные защитные маневры', difficultyLabel: 'Лёгкий', tier: 'easy', stars: 1 },
-    grok_apex: { name: 'Обезьянка', emoji: '🐵', shortDescription: 'Агрессивная тактика без глубины', difficultyLabel: 'Лёгкий', tier: 'easy', stars: 1 },
-    grok_build_0_1: { name: 'Ленивчик', emoji: '🦥', shortDescription: 'Медленная реактивная стратегия', difficultyLabel: 'Лёгкий', tier: 'easy', stars: 1 },
-    sonnet_4_6_medium: { name: 'Капибарыш', emoji: '🦦', shortDescription: 'Миролюбивый оборонительный стиль', difficultyLabel: 'Лёгкий', tier: 'easy', stars: 1 },
+    homyachok: { name: 'Хомячок', emoji: '🐹', shortDescription: 'Случайные шаги и простая защита', difficultyLabel: 'Лёгкий', tier: 'easy', stars: 1 },
+    utenok: { name: 'Утёнок', emoji: '🦆', shortDescription: 'Базовый эвристический поиск', difficultyLabel: 'Лёгкий', tier: 'easy', stars: 1 },
+    golubenok: { name: 'Голубёнок', emoji: '🐦', shortDescription: 'Пассивные защитные маневры', difficultyLabel: 'Лёгкий', tier: 'easy', stars: 1 },
+    obezyanka: { name: 'Обезьянка', emoji: '🐵', shortDescription: 'Агрессивная тактика без глубины', difficultyLabel: 'Лёгкий', tier: 'easy', stars: 1 },
+    lenivchik: { name: 'Ленивчик', emoji: '🦥', shortDescription: 'Медленная реактивная стратегия', difficultyLabel: 'Лёгкий', tier: 'easy', stars: 1 },
+    kapibarysh: { name: 'Капибарыш', emoji: '🦦', shortDescription: 'Миролюбивый оборонительный стиль', difficultyLabel: 'Лёгкий', tier: 'easy', stars: 1 },
 
     // Medium (Жёлтые)
     raccoon: { name: 'Енотик', emoji: '🦝', shortDescription: 'Паттерн-анализ и хитрый расчёт', difficultyLabel: 'Средний', tier: 'medium', stars: 2 },
@@ -33,15 +33,15 @@ const BOT_METADATA_OVERRIDES = {
     raven: { name: 'Воронёнок', emoji: '🐦‍⬛', shortDescription: 'Стратегический подрыв капканами', difficultyLabel: 'Средний', tier: 'medium', stars: 2 },
     wolf: { name: 'Волчонок', emoji: '🐺', shortDescription: 'Агрессивное стайное наступление', difficultyLabel: 'Средний', tier: 'medium', stars: 2 },
     lion: { name: 'Львёнок', emoji: '🦁', shortDescription: 'Королевский баланс атаки и защиты', difficultyLabel: 'Средний', tier: 'medium', stars: 2 },
-    codex_5_3_medium: { name: 'Бобрёнок', emoji: '🦫', shortDescription: 'Строит оборонительные редуты', difficultyLabel: 'Средний', tier: 'medium', stars: 2 },
+    bobrenok: { name: 'Бобрёнок', emoji: '🦫', shortDescription: 'Строит оборонительные редуты', difficultyLabel: 'Средний', tier: 'medium', stars: 2 },
 
     // Hard (Красные)
     owl: { name: 'Совёнок', emoji: '🦉', shortDescription: 'Глубокий минимакс поиск (3-4 шага)', difficultyLabel: 'Сложный', tier: 'hard', stars: 3 },
-    composer_2_5: { name: 'Лосёнок', emoji: '🫎', shortDescription: 'Многозадачное позиционное планирование', difficultyLabel: 'Сложный', tier: 'hard', stars: 3 },
-    gemini_3_5_flash: { name: 'Леопардик', emoji: '🐆', shortDescription: 'Молниеносные контратаки и обман', difficultyLabel: 'Сложный', tier: 'hard', stars: 3 },
-    opus_4_8_high: { name: 'Орлёнок', emoji: '🦅', shortDescription: 'Абсолютный позиционный контроль', difficultyLabel: 'Сложный', tier: 'hard', stars: 3 },
-    gpt_5_5: { name: 'Медвежонок', emoji: '🐻', shortDescription: 'Тяжёлое доминирующее давление', difficultyLabel: 'Сложный', tier: 'hard', stars: 3 },
-    opus_4_7_flash: { name: 'Акулёнок', emoji: '🦈', shortDescription: 'Хищные неожиданные выпады', difficultyLabel: 'Сложный', tier: 'hard', stars: 3 }
+    losenok: { name: 'Лосёнок', emoji: '🫎', shortDescription: 'Многозадачное позиционное планирование', difficultyLabel: 'Сложный', tier: 'hard', stars: 3 },
+    leopardik: { name: 'Леопардик', emoji: '🐆', shortDescription: 'Молниеносные контратаки и обман', difficultyLabel: 'Сложный', tier: 'hard', stars: 3 },
+    orlenok: { name: 'Орлёнок', emoji: '🦅', shortDescription: 'Абсолютный позиционный контроль', difficultyLabel: 'Сложный', tier: 'hard', stars: 3 },
+    medvezhonok: { name: 'Медвежонок', emoji: '🐻', shortDescription: 'Тяжёлое доминирующее давление', difficultyLabel: 'Сложный', tier: 'hard', stars: 3 },
+    akulenok: { name: 'Акулёнок', emoji: '🦈', shortDescription: 'Хищные неожиданные выпады', difficultyLabel: 'Сложный', tier: 'hard', stars: 3 }
 };
 
 const MODEL_BOT_IDS = new Set([]);

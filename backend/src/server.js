@@ -8,6 +8,18 @@ import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
+import jwt from 'jsonwebtoken';
+
+// Bot Championship Imports
+import {
+  extractEnabledBots,
+  getBotDisplayName,
+  getBotEmoji,
+  getAllBots
+} from './botchamp/BotDiscovery.js';
+import { generateRoundRobin } from './botchamp/generateRoundRobin.js';
+import TournamentEngine from './botchamp/TournamentEngine.js';
 
 // Load env
 dotenv.config();
@@ -128,6 +140,192 @@ app.use('/v2', express.static(clientDistPath));
 // понимает, что запущен внутри VK (скрывает выход из аккаунта и т.п.)
 app.use('/vk', express.static(clientDistPath));
 
+// ======================================================================
+//  BOT CHAMPIONSHIP PLATFORM
+// ======================================================================
+
+function requireChampionshipAuth(req, res, next) {
+  if (process.env.NODE_ENV === 'development') {
+    return next();
+  }
+  
+  let token = req.query.token;
+  if (!token && req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+    token = req.headers.authorization.split(' ')[1];
+  }
+  
+  if (!token) {
+    if (req.method === 'GET' && req.headers.accept && req.headers.accept.includes('text/html')) {
+      return res.status(401).send('<h1>Unauthorized: Admins only</h1><p>Пожалуйста, войдите в игру как администратор.</p>');
+    }
+    return res.status(401).json({ error: 'Unauthorized: No token provided' });
+  }
+  
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret');
+    if (decoded && (decoded.email === 'irozoyicawoy97@gmail.com' || decoded.role === 'admin')) {
+      req.user = decoded;
+      return next();
+    }
+    return res.status(403).json({ error: 'Forbidden: Admins only' });
+  } catch (err) {
+    if (req.method === 'GET' && req.headers.accept && req.headers.accept.includes('text/html')) {
+      return res.status(401).send('<h1>Unauthorized: Invalid token</h1>');
+    }
+    return res.status(401).json({ error: 'Unauthorized: Invalid token' });
+  }
+}
+
+const tournamentEngine = new TournamentEngine({
+  serverPort: PORT,
+  headed: false,
+  concurrency: 1
+});
+
+app.use('/botchamp/screenshots', requireChampionshipAuth, express.static(path.join(__dirname, 'botchamp/screenshots')));
+
+app.get('/botchamp/api/bots', requireChampionshipAuth, (req, res) => {
+  res.json(getAllBots());
+});
+
+app.get('/botchamp/api/schedules', requireChampionshipAuth, (req, res) => {
+  const configsDir = path.join(__dirname, 'botchamp/configs');
+  try {
+    const files = fs.readdirSync(configsDir).filter(f => f.endsWith('.json'));
+    const schedulesList = files.map(file => {
+      const filePath = path.join(configsDir, file);
+      const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+      let matchCount = 0;
+      (data.rounds || []).forEach(r => matchCount += (r.matches || []).length);
+      return {
+        file,
+        name: data.name || file,
+        rounds: (data.rounds || []).length,
+        matches: matchCount
+      };
+    });
+    res.json(schedulesList);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to read schedules' });
+  }
+});
+
+app.post('/botchamp/api/tournament/start', requireChampionshipAuth, async (req, res) => {
+  const state = tournamentEngine.getLiveState();
+  if (state.progress && state.progress.completed < state.progress.total) {
+    return res.status(409).json({ error: 'Championship is already running' });
+  }
+  
+  const { scheduleFile, options } = req.body;
+  
+  let schedule = null;
+  if (scheduleFile === '__roundrobin') {
+    schedule = generateRoundRobin(options);
+  } else {
+    const filePath = path.join(__dirname, 'botchamp/configs', scheduleFile);
+    try {
+      schedule = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    } catch (e) {
+      return res.status(400).json({ error: 'Schedule file not found' });
+    }
+  }
+
+  tournamentEngine.options.headed = !!options.headed;
+  tournamentEngine.options.concurrency = Number(options.concurrency) || 1;
+  tournamentEngine.options.accelerate = options.accelerate !== false;
+
+  tournamentEngine.runTournament(schedule).catch(err => {
+    console.error('[BotChamp API] Tournament crashed:', err);
+  });
+  
+  io.emit('tournament:started', { schedule: schedule.name });
+
+  res.json({ ok: true });
+});
+
+app.post('/botchamp/api/tournament/stop', requireChampionshipAuth, async (req, res) => {
+  await tournamentEngine.close();
+  res.json({ ok: true });
+});
+
+app.get('/botchamp/api/tournament/state', requireChampionshipAuth, (req, res) => {
+  res.json(tournamentEngine.getLiveState());
+});
+
+app.get('/botchamp/api/standings', requireChampionshipAuth, async (req, res) => {
+  const latestChamp = await prisma.championship.findFirst({
+    orderBy: { startedAt: 'desc' }
+  });
+  if (!latestChamp) {
+    return res.json({ standings: [], tournamentName: null });
+  }
+  const standings = latestChamp.standings || { standings: [] };
+  res.json({
+    standings: standings.standings || [],
+    tournamentName: latestChamp.name
+  });
+});
+
+app.get('/botchamp/api/results', requireChampionshipAuth, async (req, res) => {
+  const latestChamp = await prisma.championship.findFirst({
+    orderBy: { startedAt: 'desc' }
+  });
+  if (!latestChamp) {
+    return res.json([]);
+  }
+  const matches = await prisma.championshipMatch.findMany({
+    where: { championshipId: latestChamp.id },
+    orderBy: { playedAt: 'desc' }
+  });
+  res.json(matches);
+});
+
+app.get('/botchamp/api/result/:id', requireChampionshipAuth, async (req, res) => {
+  const match = await prisma.championshipMatch.findUnique({
+    where: { id: req.params.id }
+  });
+  if (!match) return res.status(404).json({ error: 'Match not found' });
+  res.json(match);
+});
+
+app.get('/botchamp/api/archives', requireChampionshipAuth, async (req, res) => {
+  const archives = await prisma.championship.findMany({
+    where: { status: { in: ['finished', 'stopped'] } },
+    orderBy: { startedAt: 'desc' }
+  });
+  res.json(archives);
+});
+
+app.get('/botchamp/api/archive/:id', requireChampionshipAuth, async (req, res) => {
+  const champ = await prisma.championship.findUnique({
+    where: { id: req.params.id }
+  });
+  if (!champ) return res.status(404).json({ error: 'Archive not found' });
+  
+  const matches = await prisma.championshipMatch.findMany({
+    where: { championshipId: champ.id },
+    orderBy: { playedAt: 'asc' }
+  });
+  
+  res.json({
+    id: champ.id,
+    name: champ.name,
+    startedAt: champ.startedAt,
+    finishedAt: champ.finishedAt,
+    totalMatches: champ.totalMatches,
+    standings: champ.standings,
+    matches
+  });
+});
+
+app.get('/botchamp/api/archive/:id/match/:matchId', requireChampionshipAuth, async (req, res) => {
+  const match = await prisma.championshipMatch.findUnique({
+    where: { id: req.params.matchId }
+  });
+  if (!match) return res.status(404).json({ error: 'Match not found' });
+  res.json(match);
+});
+
 // For React Navigation HTML5 routing (fallback to index.html)
 app.get('/v2/*', (req, res) => {
   res.sendFile(path.join(clientDistPath, 'index.html'));
@@ -166,6 +364,23 @@ try {
 // Initialize real-time PvP socket logic
 initOnlineLobby(io);
 initSocket(io);
+
+// Hook tournament engine events to Socket.io broadcasts
+tournamentEngine.on('match:start', (data) => {
+  io.emit('match:start', data);
+});
+
+tournamentEngine.on('match:finished', (data) => {
+  io.emit('match:finished', data);
+});
+
+tournamentEngine.on('tournament:finished', (data) => {
+  io.emit('tournament:finished', data);
+});
+
+tournamentEngine.on('match:error', (data) => {
+  io.emit('match:error', data);
+});
 
 // Start listening
 httpServer.listen(PORT, '0.0.0.0', () => {
