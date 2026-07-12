@@ -29,7 +29,7 @@ if [ ! -f .env ]; then
 fi
 npm install
 npx prisma generate
-npx prisma migrate deploy
+"$APP_ROOT/scripts/prisma-migrate-check.sh"
 
 echo "3. Frontend: install & web build..."
 cd "$APP_ROOT/client"
