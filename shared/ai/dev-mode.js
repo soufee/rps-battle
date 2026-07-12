@@ -1,4 +1,6 @@
 import { GAME_CONFIG, BOARD_WIDTH, BOARD_HEIGHT, COMPUTER, PLAYER } from '../game-config.js';
+import { createTieView } from '../bot-view.js';
+import { sanitizeSetup, sanitizeMove } from '../bot-guard.js';
 
 // Access these dynamically from globalThis to avoid circular dependency import issues
 const getBotRegistry = () => globalThis.botRegistry;
@@ -214,9 +216,20 @@ const devMode = {
             immobilized: p.immobilized,
             removed: p.removed
         });
+        // Anti-cheat: the bottom bot's opponent is the top side (real.aiPieces).
+        // Hide identity of hidden opponent pieces, exactly like the top bot's view.
+        const cloneEnemyPiece = (p) => {
+            const clone = clonePiece(p, PLAYER);
+            if (!clone.revealed
+                && !clone.removed) {
+                clone.type = 'piece';
+                clone.pieceType = null;
+            }
+            return clone;
+        };
         
         const mirroredAi = (real.playerPieces || []).map(p => clonePiece(p, COMPUTER));
-        const mirroredPlayer = (real.aiPieces || []).map(p => clonePiece(p, PLAYER));
+        const mirroredPlayer = (real.aiPieces || []).map(cloneEnemyPiece);
         
         const board = [];
         for (let r = 0; r < BOARD_HEIGHT; r++) {
@@ -247,7 +260,18 @@ const devMode = {
             battleState: null,
             botId: this.bottomBotId,
             gameOver: !!real.gameOver,
-            lastMove: null,
+            // Mirror lastMove (row-flipped) so the bottom bot has the same
+            // information as the top bot — keeps both sides on equal footing.
+            lastMove: real.lastMove
+                ? {
+                    from: real.lastMove.from
+                        ? [flip(real.lastMove.from[0]), real.lastMove.from[1]]
+                        : null,
+                    to: real.lastMove.to
+                        ? [flip(real.lastMove.to[0]), real.lastMove.to[1]]
+                        : null
+                }
+                : null,
             // Mirror the no-capture counter so the bottom bot also senses the
             // approaching draw and applies anti-draw pressure.
             movesWithoutCapture: real.movesWithoutCapture || 0,
@@ -272,7 +296,8 @@ const devMode = {
         let mirroredMove = null;
         try {
             const bot = botRegistry.get(this.bottomBotId);
-            mirroredMove = bot ? bot.move(mirrored) : null;
+            // Anti-cheat: reduce the bot's output to safe primitives before use.
+            mirroredMove = bot ? sanitizeMove(bot.move(mirrored)) : null;
         } catch (e) {
             console.error('[devMode] bottom bot crashed:', e);
             mirroredMove = null;
@@ -284,7 +309,7 @@ const devMode = {
             return null;
         }
         
-        const realPiece = (realState.playerPieces || []).find(p => p.id === mirroredMove.piece.id);
+        const realPiece = (realState.playerPieces || []).find(p => p.id === mirroredMove.pieceId);
         if (!realPiece) {
             this.saveSlot('bottom');
             this.loadSlot('top');
@@ -365,7 +390,9 @@ const devMode = {
     chooseBottomFlagAndTrapPositions(botId) {
         const botRegistry = getBotRegistry();
         const bot = botRegistry ? botRegistry.get(botId) : null;
-        const raw = bot ? bot.chooseFlagAndTrap() : { flagIndex: 0, trapIndex: 8 };
+        // Anti-cheat: validate the bottom bot's setup before mirroring it, so a
+        // malformed placement cannot field an army without a flag or duplicates.
+        const raw = sanitizeSetup(bot ? bot.chooseFlagAndTrap() : null);
         const flipLocal = (i) => {
             const r = Math.floor(i / 8);
             const c = i % 8;
@@ -401,9 +428,14 @@ const devMode = {
         const bottomPiece = attacker.owner === PLAYER ? attacker : defender;
         const ourPiece = side === 'top' ? topPiece : bottomPiece;
         const opponentPiece = side === 'top' ? bottomPiece : topPiece;
- 
+
+        // Anti-cheat: fog-of-war tie view — hides the opponent's hidden pieces
+        // and its current-round choice, while keeping the board orientation the
+        // tie code expects (side is derived from botId downstream).
+        const view = createTieView(gameState, side);
+
         return aiEngine.resolveTieChoiceForBot(bot, {
-            gameState: gameState,
+            gameState: view,
             ourPiece: ourPiece,
             opponentPiece: opponentPiece,
             battleRow: bs.newRow,

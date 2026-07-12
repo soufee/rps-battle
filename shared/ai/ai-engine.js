@@ -1003,14 +1003,15 @@ const aiEngine = {
      * Если да — ничья для него выгодна, и draw-pressure НЕ применяется.
      */
     isLosingPosition(gameState) {
-        const aiCombat = gameState.aiPieces.filter(p =>
-            !p.removed && p.type === 'piece' && !p.immobilized
-        ).length;
-        const playerCombat = gameState.playerPieces.filter(p =>
-            !p.removed && p.type === 'piece' && !p.immobilized
-        ).length;
-        // Считаем проигрышной позицией разницу ≥ 2 фигур не в пользу бота
-        return playerCombat - aiCombat >= 2;
+        // Fog-of-war safe material count: use the number of pieces still on the
+        // board (removal is public knowledge for both sides). Counting by
+        // `type === 'piece'` is unreliable here because a hidden enemy flag/trap
+        // is masked as a generic 'piece', which would phantom-inflate the enemy
+        // material and make BOTH sides wrongly think they are losing.
+        const aiCount = gameState.aiPieces.filter(p => !p.removed).length;
+        const playerCount = gameState.playerPieces.filter(p => !p.removed).length;
+        // A position is "losing" when the bot is behind by 2+ pieces.
+        return playerCount - aiCount >= 2;
     },
 
     /**

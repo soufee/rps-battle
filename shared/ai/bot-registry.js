@@ -15,6 +15,8 @@
  * Memory reset for shared AI state is handled centrally by aiEngine.
  */
 
+import { isValidBotId } from '../bot-guard.js';
+
 /** Map of centralized baby animal name, emoji, and description overrides for all 20 bots. */
 const BOT_METADATA_OVERRIDES = {
     // Easy (Зелёные)
@@ -55,7 +57,17 @@ function resolveModelAuthor(bot) {
 const botRegistry = {
     _bots: [],
     _byId: new Map(),
-    
+    _sealed: false,
+
+    /**
+     * Lock the registry after the official roster is loaded. Once sealed, no bot
+     * can overwrite an already-registered id (anti-impersonation) — a malicious
+     * bot cannot hijack an opponent's slot by re-declaring its id.
+     */
+    seal() {
+        this._sealed = true;
+    },
+
     register(bot) {
         if (!bot || typeof bot !== 'object') {
             throw new Error('botRegistry.register: bot must be an object');
@@ -72,6 +84,15 @@ const botRegistry = {
 
         if (!bot.id || typeof bot.id !== 'string') {
             throw new Error('botRegistry.register: bot.id must be a non-empty string');
+        }
+        // Reject structurally unsafe ids (prototype-pollution keys, weird chars).
+        if (!isValidBotId(bot.id)) {
+            throw new Error(`botRegistry.register: invalid bot id "${bot.id}"`);
+        }
+        // Anti-impersonation: a sealed registry never lets an existing slot be
+        // overwritten by another bot re-declaring the same id.
+        if (this._sealed && this._byId.has(bot.id)) {
+            throw new Error(`botRegistry.register: registry is sealed, cannot overwrite "${bot.id}"`);
         }
         if (typeof bot.move !== 'function') {
             throw new Error(`botRegistry.register: bot "${bot.id}" missing move()`);
@@ -116,7 +137,11 @@ const botRegistry = {
         if (bot && bot.__rpsBotCertified__) {
             normalized.__rpsBotCertified__ = bot.__rpsBotCertified__;
         }
-        
+
+        // Freeze the stored descriptor so no later code can swap a bot's
+        // move()/chooseFlagAndTrap() through the registry reference.
+        Object.freeze(normalized);
+
         if (this._byId.has(bot.id)) {
             const existingIdx = this._bots.findIndex(b => b.id === bot.id);
             if (existingIdx >= 0) {

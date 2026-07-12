@@ -1,6 +1,8 @@
 import { GAME_CONFIG, PLAYER, COMPUTER, FLAG, TRAP, PIECE_TYPES, PIECE_SYMBOLS, BOARD_WIDTH, BOARD_HEIGHT } from './game-config.js';
-import { resolveBattle, getValidMoves } from './game-rules.js';
+import { resolveBattle, getValidMoves, isMoveLegal } from './game-rules.js';
 import { botRegistry, aiEngine, aiBeliefs, devMode } from './ai/index.js';
+import { createBotView, createTieView } from './bot-view.js';
+import { sanitizeSetup, sanitizeMove } from './bot-guard.js';
 
 /**
  * Generate a shuffled array of `count` RPS types with a guaranteed
@@ -134,7 +136,10 @@ export function placePlayerPieces(gameState) {
 export function placeComputerPieces(gameState) {
     const botId = gameState.botId || 'rabbit';
     const bot = botRegistry.get(botId);
-    const { flagIndex: flagPos, trapIndex: trapPos } = bot.chooseFlagAndTrap();
+    // Anti-cheat: never trust a bot's raw setup — a malformed setup could field
+    // an army without a flag or with duplicate specials. sanitizeSetup() forces
+    // exactly one flag and one trap in two distinct on-board cells.
+    const { flagIndex: flagPos, trapIndex: trapPos } = sanitizeSetup(bot.chooseFlagAndTrap());
     
     let flagCount = 0;
     let trapCount = 0;
@@ -324,7 +329,7 @@ export function precommitAITieChoice(gameState) {
     const bot = botRegistry.get(botId);
     
     const preChoice = aiEngine.resolveTieChoiceForBot(bot, {
-        gameState: gameState,
+        gameState: createTieView(gameState, 'top'),
         ourPiece: aiPiece,
         opponentPiece: playerPiece,
         battleRow: gameState.battleState.newRow,
@@ -642,22 +647,35 @@ export function makeBotMove(gameState) {
     }
     
     const bot = botRegistry.get(gameState.botId);
-    const move = bot.move(gameState);
-    
-    if (move) {
-        const result = makeMove(gameState, move.piece, move.row, move.col);
+
+    // Anti-cheat: hand the bot a fog-of-war clone (hidden enemy identities
+    // stripped, real state un-mutable). The returned move references a cloned
+    // piece, so it is mapped back to the real piece by id and validated.
+    const view = createBotView(gameState);
+    // Anti-cheat: reduce the bot's output to safe primitives, resolve the real
+    // piece by id, and re-validate legality against the authoritative board.
+    const move = sanitizeMove(bot.move(view));
+
+    const realPiece = move
+        ? gameState.aiPieces.find(p => p.id === move.pieceId)
+        : null;
+    const isLegal = realPiece
+        && isMoveLegal(realPiece.row, realPiece.col, move.row, move.col, gameState.board, COMPUTER);
+
+    if (isLegal) {
+        const result = makeMove(gameState, realPiece, move.row, move.col);
         if (result.type !== 'battle' || result.result !== 'draw') {
             endTurn(gameState);
         }
         return result;
-    } else {
-        // No moves left for bot -> player wins
-        endGame(gameState, true, 'no_moves');
-        return {
-            type: 'no_moves',
-            winner: PLAYER
-        };
     }
+
+    // No move, unknown piece, or illegal move -> the bot forfeits its turn.
+    endGame(gameState, true, 'no_moves');
+    return {
+        type: 'no_moves',
+        winner: PLAYER
+    };
 }
 
 export function startDevMatch(gameState, topBotId, bottomBotId) {
@@ -743,20 +761,26 @@ export function makeBottomBotMove(gameState) {
     }
     
     const move = devMode.makeBottomMove(gameState);
-    
-    if (move) {
+
+    const legal = move
+        && move.piece
+        && !move.piece.removed
+        && isMoveLegal(move.piece.row, move.piece.col, move.row, move.col, gameState.board, PLAYER);
+
+    if (legal) {
         const result = makeMove(gameState, move.piece, move.row, move.col);
         if (result.type !== 'battle' || result.result !== 'draw') {
             endTurn(gameState);
         }
         return result;
-    } else {
-        endGame(gameState, false, 'no_moves');
-        return {
-            type: 'no_moves',
-            winner: COMPUTER
-        };
     }
+
+    // No move, unknown piece, or illegal move -> the bottom bot forfeits.
+    endGame(gameState, false, 'no_moves');
+    return {
+        type: 'no_moves',
+        winner: COMPUTER
+    };
 }
 
 export function resolveDevModeTie(gameState) {
@@ -765,23 +789,31 @@ export function resolveDevModeTie(gameState) {
     const { attacker, defender, newRow, newCol } = gameState.battleState;
     const topPiece = attacker.owner === COMPUTER ? attacker : defender;
     const bottomPiece = attacker.owner === PLAYER ? attacker : defender;
-    
+
+    // Anti-cheat: both sides choose simultaneously. Snapshot the pre-choice
+    // (publicly known) types and compute BOTH choices from that snapshot before
+    // committing either one. This way neither bot can observe the opponent's
+    // fresh choice — not via the "opponent type" argument and not via
+    // battleState.playerChoice / aiChoice (still null while choosing).
+    const topPublicType = topPiece.pieceType;
+    const bottomPublicType = bottomPiece.pieceType;
+
     const bottomChoice = devMode.pickChoiceForSide(
         'bottom',
-        bottomPiece.pieceType,
-        topPiece.pieceType,
+        bottomPublicType,
+        topPublicType,
         gameState
     );
-    bottomPiece.pieceType = bottomChoice;
-    gameState.battleState.playerChoice = bottomChoice;
-    
     const topChoice = devMode.pickChoiceForSide(
         'top',
-        topPiece.pieceType,
-        bottomPiece.pieceType,
+        topPublicType,
+        bottomPublicType,
         gameState
     );
+
+    bottomPiece.pieceType = bottomChoice;
     topPiece.pieceType = topChoice;
+    gameState.battleState.playerChoice = bottomChoice;
     gameState.battleState.aiChoice = topChoice;
     
     const result = resolveBattle(attacker.pieceType, defender.pieceType);
