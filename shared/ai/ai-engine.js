@@ -1023,28 +1023,75 @@ const aiEngine = {
         const drawLimit = (GAME_CONFIG.GAME && GAME_CONFIG.GAME.DRAW_NO_CAPTURE_LIMIT) || 20;
         const ratio = movesWithout / drawLimit;
 
-        // Если ещё далеко от лимита — нет давления
-        if (ratio < 0.5) return 0;
+        // Far from the limit: no pressure at all.
+        if (ratio < 0.5) {
+            return 0;
+        }
 
-        // Если позиция проигрышная — ничья выгодна, не давим
-        if (this.isLosingPosition(gameState)) return 0;
+        // A losing side benefits from a draw, so do not push it to attack.
+        if (this.isLosingPosition(gameState)) {
+            return 0;
+        }
 
         const { piece, row, col } = moveData;
         const target = gameState.board[row][col];
         const isAttack = !!(target && target.owner === PLAYER);
         const isForward = row > piece.row;
 
+        // Escalating base incentive: the closer to the draw, the bolder the bot.
+        // Values are deliberately large so that in a stall they outweigh the
+        // defensive (flag-shield / stay-home / consolidation) bonuses baked into
+        // the per-bot evaluators, which otherwise keep both armies at home.
         let bonus = 0;
-
-        if (ratio >= 0.75) {
-            // Критическая зона (≥ 15 ходов из 20): сильное давление
-            bonus = isAttack ? 120 : (isForward ? 40 : -30);
+        if (ratio >= 0.9) {
+            bonus = isAttack ? 800 : (isForward ? 300 : -200);
+        } else if (ratio >= 0.75) {
+            bonus = isAttack ? 450 : (isForward ? 150 : -120);
         } else {
-            // Зона предупреждения (≥ 10 ходов из 20): умеренное давление
-            bonus = isAttack ? 50 : (isForward ? 15 : -10);
+            bonus = isAttack ? 220 : (isForward ? 70 : -60);
+        }
+
+        // Engagement drive: reward closing the gap to the nearest enemy piece
+        // even when no flag is revealed. Without this the armies never get a
+        // target to walk toward and simply patrol their own halves to a draw.
+        // Scale must beat the "return to own flag" consolidation pull.
+        const nearest = this.nearestEnemyDistance(piece.row, piece.col, gameState);
+        if (nearest.dist >= 0) {
+            const nextDist = Math.max(
+                Math.abs(row - nearest.row),
+                Math.abs(col - nearest.col)
+            );
+            const closing = nearest.dist - nextDist;
+            const engageScale = ratio >= 0.9
+                ? 300
+                : (ratio >= 0.75 ? 200 : 120);
+            bonus += closing * engageScale;
         }
 
         return bonus;
+    },
+
+    /**
+     * Chebyshev distance from a square to the nearest active enemy piece.
+     * Returns { dist, row, col } of the closest enemy, or dist = -1 if none.
+     */
+    nearestEnemyDistance(fromRow, fromCol, gameState) {
+        const best = { dist: -1, row: -1, col: -1 };
+        for (const enemy of gameState.playerPieces) {
+            if (enemy.removed || enemy.row < 0 || enemy.immobilized) {
+                continue;
+            }
+            const dist = Math.max(
+                Math.abs(fromRow - enemy.row),
+                Math.abs(fromCol - enemy.col)
+            );
+            if (best.dist < 0 || dist < best.dist) {
+                best.dist = dist;
+                best.row = enemy.row;
+                best.col = enemy.col;
+            }
+        }
+        return best;
     },
 
     evaluateMoveV2(moveData, gameState) {

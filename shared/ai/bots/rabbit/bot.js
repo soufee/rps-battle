@@ -81,7 +81,7 @@ const rabbitBot = {
         if (availablePieces.length === 0) {
             return null;
         }
-        
+
         // P0: Mandatory tactical move FIRST (capture flag, defend flag, hunt)
         const mandatory = aiTacticalCore.getMandatoryMove(gameState, {
             deducer: (gs) => this._deduceEnemyFlag(gs),
@@ -108,7 +108,23 @@ const rabbitBot = {
         if (flagCapture.length > 0) {
             return aiEngine.pickRandom(flagCapture);
         }
-        
+
+        // P0.5: Draw-pressure desperation — force an exchange when a draw looms.
+        // Must sit ABOVE the defensive branches (engine flag defense, rescue,
+        // proactive defense, corridor): those keep returning timid shuffles that
+        // never capture, so the no-capture counter runs out to a draw. Immediate
+        // range-1 flag defense (branch 1) already ran, so overriding the softer
+        // defensive layers here is safe. Skipped when the bot is losing (a draw
+        // is a good outcome then) or when no capturing move exists.
+        const drawRatio = this._drawPressureRatio(gameState);
+        if (drawRatio >= 0.75
+            && !aiEngine.isLosingPosition(gameState)) {
+            const engageMove = this._findDrawPressureAttack(gameState, availablePieces);
+            if (engageMove) {
+                return engageMove;
+            }
+        }
+
         // 3. Engine-level flag defense (broader coverage)
         const engineFlagDefense = aiEngine.findFlagDefenseMoves(gameState, availablePieces);
         if (engineFlagDefense.length > 0) {
@@ -1044,6 +1060,67 @@ const rabbitBot = {
         return proactiveMoves;
     },
     
+    // === Draw pressure ===
+
+    _drawPressureRatio(gameState) {
+        const movesWithout = gameState.movesWithoutCapture || 0;
+        const limit = (GAME_CONFIG.GAME && GAME_CONFIG.GAME.DRAW_NO_CAPTURE_LIMIT) || 20;
+        return movesWithout / limit;
+    },
+
+    /**
+     * Collect legal attacks on adjacent enemies and pick the best-scored one,
+     * bypassing the risk filter. Only clearly bad targets are skipped: a
+     * revealed trap or a revealed losing fight.
+     */
+    _findDrawPressureAttack(gameState, availablePieces) {
+        const candidates = [];
+        for (const piece of availablePieces) {
+            if (piece.type === 'flag'
+                || piece.type === 'trap') {
+                continue;
+            }
+            const moves = aiEngine.getMovesForPiece(piece, gameState);
+            for (const move of moves) {
+                const target = gameState.board[move.row][move.col];
+                if (!target
+                    || target.owner !== PLAYER
+                    || target.type === 'flag') {
+                    continue;
+                }
+                if (target.revealed
+                    && target.type === 'trap') {
+                    continue;
+                }
+                if (target.revealed
+                    && target.type === 'piece'
+                    && piece.pieceType
+                    && aiEngine.resolveBattle(piece.pieceType, target.pieceType) === 'lose') {
+                    continue;
+                }
+                candidates.push({ piece, row: move.row, col: move.col });
+            }
+        }
+
+        if (candidates.length === 0) {
+            return null;
+        }
+
+        let best = null;
+        let bestScore = -Infinity;
+        for (const candidate of candidates) {
+            const score = this._evaluateRabbitMove(candidate, gameState);
+            if (score > bestScore) {
+                bestScore = score;
+                best = candidate;
+            }
+        }
+
+        return best
+            ? { piece: best.piece, row: best.row, col: best.col }
+            : null;
+    },
+
     // === Evaluation ===
 
     /**

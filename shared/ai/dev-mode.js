@@ -247,7 +247,11 @@ const devMode = {
             battleState: null,
             botId: this.bottomBotId,
             gameOver: !!real.gameOver,
-            lastMove: null
+            lastMove: null,
+            // Mirror the no-capture counter so the bottom bot also senses the
+            // approaching draw and applies anti-draw pressure.
+            movesWithoutCapture: real.movesWithoutCapture || 0,
+            devMode: true
         };
     },
     

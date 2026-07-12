@@ -67,6 +67,19 @@ const foxBot = {
                 return mandatory;
             }
 
+            // Draw-pressure desperation: force an exchange before the no-capture
+            // limit hands out a draw. Fox's goal pipeline favours safe develop /
+            // guard moves, so without this it can idle next to the enemy to a draw.
+            const drawRatio = this._drawPressureRatio(gameState);
+            if (drawRatio >= 0.75
+                && !aiEngine.isLosingPosition(gameState)) {
+                const forced = this._findDrawPressureAttack(gameState);
+                if (forced) {
+                    aiEngine.recordAIMove(forced);
+                    return forced;
+                }
+            }
+
             const move = this._pickMove(gameState);
             if (move) {
                 aiEngine.recordAIMove(move);
@@ -80,6 +93,70 @@ const foxBot = {
 
     chooseFlagAndTrap() {
         return aiEngine.chooseFlagAndTrapPositions({ style: 'corner-strong' });
+    },
+
+    // =========================================================================
+    //  DRAW PRESSURE
+    // =========================================================================
+
+    _drawPressureRatio(gameState) {
+        const movesWithout = gameState.movesWithoutCapture || 0;
+        const limit = (GAME_CONFIG.GAME && GAME_CONFIG.GAME.DRAW_NO_CAPTURE_LIMIT) || 20;
+        return movesWithout / limit;
+    },
+
+    /**
+     * Pick the best available capture, bypassing the goal pipeline. Only
+     * clearly bad targets are skipped (revealed trap, revealed losing fight).
+     * Scored with the generic evaluator, which already blends in draw pressure.
+     */
+    _findDrawPressureAttack(gameState) {
+        const available = aiEngine.getActivePieces(gameState);
+        const candidates = [];
+        for (const piece of available) {
+            if (piece.type === FLAG
+                || piece.type === TRAP) {
+                continue;
+            }
+            const moves = aiEngine.getMovesForPiece(piece, gameState);
+            for (const move of moves) {
+                const target = gameState.board[move.row][move.col];
+                if (!target
+                    || target.owner !== PLAYER
+                    || target.type === FLAG) {
+                    continue;
+                }
+                if (target.revealed
+                    && target.type === TRAP) {
+                    continue;
+                }
+                if (target.revealed
+                    && target.type === 'piece'
+                    && piece.pieceType
+                    && aiEngine.resolveBattle(piece.pieceType, target.pieceType) === 'lose') {
+                    continue;
+                }
+                candidates.push({ piece, row: move.row, col: move.col });
+            }
+        }
+
+        if (candidates.length === 0) {
+            return null;
+        }
+
+        let best = null;
+        let bestScore = -Infinity;
+        for (const candidate of candidates) {
+            const score = aiEngine.evaluateMoveV2(candidate, gameState);
+            if (score > bestScore) {
+                bestScore = score;
+                best = candidate;
+            }
+        }
+
+        return best
+            ? { piece: best.piece, row: best.row, col: best.col }
+            : null;
     },
 
     // =========================================================================
@@ -934,6 +1011,11 @@ const foxBot = {
         score -= cluster;
 
         score += this._opponentReplyAdjustment(state, move, ctx);
+
+        // Anti-draw pressure: escalate aggression as the no-capture timer grows.
+        // Fox scores its moves through this pipeline rather than evaluateMoveV2,
+        // so the pressure must be injected here to actually influence decisions.
+        score += aiEngine.getDrawPressureBonus(move, state);
 
         return score;
     },
