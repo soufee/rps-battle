@@ -1029,6 +1029,8 @@ export default function App() {
   const [leaveSetupModalVisible, setLeaveSetupModalVisible] = useState(false);
   const [hoveredSetupCell, setHoveredSetupCell] = useState(null);
   const setupTimeoutHandledRef = useRef(false);
+  const turnTimeoutHandledRef = useRef(false);
+  const pveTurnDeadlineRef = useRef(0);
 
   const socketRef = useRef(null);
   const pvpRoleRef = useRef(null);
@@ -1098,23 +1100,27 @@ export default function App() {
     }
   }, [screen, loading, user]);
 
-  // Countdown turn timer effect (PvE only; PvP syncs from server turnDeadline)
+  // Countdown turn timer effect (PvE only; PvP syncs from server turnDeadline).
+  // Deadline-based so the displayed value stays honest to wall-clock time even
+  // when a heavy bot briefly blocks the main thread while thinking.
   useEffect(() => {
     if (gameMode === 'pvp') return;
     if (!game || game.phase !== GAME_CONFIG.PHASES.PLAYING || game.gameOver) {
       setTurnTimeLeft(TURN_TIME_LIMIT);
+      turnTimeoutHandledRef.current = false;
+      pveTurnDeadlineRef.current = 0;
       return;
     }
 
-    setTurnTimeLeft(TURN_TIME_LIMIT);
-    const interval = setInterval(() => {
-      setTurnTimeLeft((prev) => {
-        if (prev <= 1) {
-          return TURN_TIME_LIMIT;
-        }
-        return prev - 1;
-      });
-    }, 1000);
+    const deadline = Date.now() + (TURN_TIME_LIMIT * 1000);
+    pveTurnDeadlineRef.current = deadline;
+    turnTimeoutHandledRef.current = false;
+    const tick = () => {
+      const left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      setTurnTimeLeft(left);
+    };
+    tick();
+    const interval = setInterval(tick, 250);
 
     return () => clearInterval(interval);
   }, [game?.currentPlayer, game?.phase, gameMode]);
@@ -2225,6 +2231,43 @@ export default function App() {
     handleGameOver(COMPUTER, 'setup_timeout');
   };
 
+  // PvE turn timeout: the human forfeits if they don't move in time (mirrors the
+  // server-side turn_timeout enforced in PvP). Only the player is penalised —
+  // the bot moves on its own, so its turn never legitimately runs out.
+  const handleTurnTimeout = () => {
+    if (!game
+      || game.phase !== GAME_CONFIG.PHASES.PLAYING
+      || game.gameOver
+      || gameMode === 'pvp') {
+      return;
+    }
+    if (game.currentPlayer !== PLAYER) {
+      return;
+    }
+    const updatedGame = { ...game };
+    endGame(updatedGame, false, 'turn_timeout');
+    setGame(updatedGame);
+    handleGameOver(COMPUTER, 'turn_timeout', updatedGame);
+  };
+
+  useEffect(() => {
+    if (gameMode === 'pvp') {
+      return;
+    }
+    if (
+      !game
+      || game.phase !== GAME_CONFIG.PHASES.PLAYING
+      || game.gameOver
+      || turnTimeLeft > 0
+      || turnTimeoutHandledRef.current
+      || game.currentPlayer !== PLAYER
+    ) {
+      return;
+    }
+    turnTimeoutHandledRef.current = true;
+    handleTurnTimeout();
+  }, [turnTimeLeft, game?.phase, game?.currentPlayer, gameMode]);
+
   useEffect(() => {
     if (
       !game
@@ -2548,16 +2591,33 @@ export default function App() {
     const thinkDelay = isChampMode 
       ? Math.max(5, (GAME_CONFIG.TIMING.AI_THINK_DELAY || 1000) / (parseFloat(speedParam) || 1))
       : (GAME_CONFIG.TIMING.AI_THINK_DELAY || 1000);
-      
+
+    // In regular PvE the opponent bot must respect the same per-turn time budget
+    // as a human. Championship / dev-mode matches run under their own scheduler.
+    const enforceBudget = !currentGame.devMode
+      && !isChampMode
+      && currentGame.currentPlayer === COMPUTER;
+
     setTimeout(() => {
       const updatedGame = { ...currentGame };
+      const computeStart = Date.now();
       let result;
       if (isTop) {
         result = makeBotMove(updatedGame);
       } else {
         result = makeBottomBotMove(updatedGame);
       }
+      const elapsedMs = Date.now() - computeStart;
       setIsBotThinking(false);
+
+      if (enforceBudget && elapsedMs > (TURN_TIME_LIMIT * 1000)) {
+        addLog(tr('logBotTimeout', { name: botNameStr }));
+        endGame(updatedGame, true, 'bot_timeout');
+        setGame(updatedGame);
+        handleGameOver(PLAYER, 'bot_timeout', updatedGame);
+        return;
+      }
+
       processMoveResult(updatedGame, result);
     }, thinkDelay);
   };
@@ -2662,7 +2722,9 @@ export default function App() {
         hopeless: 'reasonHopeless',
         no_moves: 'reasonNoMoves',
         surrender: 'reasonSurrender',
-        no_captures_draw: 'reasonDrawNoCapture'
+        no_captures_draw: 'reasonDrawNoCapture',
+        turn_timeout: 'reasonTurnTimeout',
+        bot_timeout: 'reasonBotTimeout'
       };
       if (reasonKeys[reason]) {
         desc += ` (${tr(reasonKeys[reason])})`;
@@ -4359,6 +4421,7 @@ export default function App() {
                 no_moves: tr('reasonNoMoves'),
                 disconnect_timeout: tr('reasonDisconnectTimeout'),
                 turn_timeout: tr('reasonTurnTimeout'),
+                bot_timeout: tr('reasonBotTimeout'),
                 no_captures_draw: tr('reasonDrawNoCapture'),
                 mutual_stalemate: tr('reasonMutualStalemate')
               }[game.endReason] || ''}
@@ -4536,7 +4599,7 @@ export default function App() {
                             ? tr('draw')
                             : (game.winner === (gameMode === 'pvp' ? pvpRole : PLAYER) ? tr('victory') : tr('defeat'))))
                       : isPlayerTurn
-                        ? tr('yourTurn')
+                        ? `${tr('yourTurn')} ⏱ ${turnTimeLeft}s`
                         : tr('waiting')
                 }
                 isTurnActive={isSetup || isPlayerTurn}
@@ -4560,7 +4623,7 @@ export default function App() {
                           ? tr('draw')
                           : (game.winner === (gameMode === 'pvp' ? (pvpRole === 'p1' ? 'p2' : 'p1') : COMPUTER) ? tr('victory') : tr('defeat')))
                       : isBotTurn
-                        ? tr('opponentTurn')
+                        ? `${tr('opponentTurn')} ⏱ ${turnTimeLeft}s`
                         : tr('waiting')
                 }
                 isTurnActive={isBotTurn}
