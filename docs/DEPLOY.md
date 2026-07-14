@@ -1,131 +1,118 @@
 # Production deploy (rps-battles.com)
 
-Deploy happens **automatically on every push to `main`** via GitHub Actions.
+**Deploy инициируется GitHub Actions при любом пуше в ветку `main`.**
 
-## How it works
+Твоя локальная машина **не участвует** в деплое. Она только делает `git push`.  
+Весь деплой выполняется на инфраструктуре GitHub (runner `ubuntu-latest`), который подключается по SSH на прод-сервер, используя ключ, хранящийся в секретах репозитория.
+
+## Как это работает
 
 ```
-local laptop ── git push origin main ──▶ GitHub
-                                          │
-                                          ▼
-                              GitHub Actions (ubuntu-latest)
-                                          │
-                              appleboy/ssh-action (using secrets)
-                                          │
-                                          ▼
-                              server (root@178.104.89.151)
-                                          │
-                              /root/www/scripts/deploy.sh
+Любой пуш в main          GitHub
+(с любого компьютера,          │
+ из веб-интерфейса, PR и т.д.) │
+                               ▼
+                    GitHub Actions (runner на GitHub)
+                               │
+                    appleboy/ssh-action
+                    (берёт ключ из GitHub Secrets)
+                               │
+                               ▼
+                    Прод-сервер (root@178.104.89.151)
+                               │
+                    /root/www/scripts/deploy.sh
 ```
 
-- The workflow file is `.github/workflows/deploy.yml`
-- It triggers on `push` to `main` (and `master`) + supports manual `workflow_dispatch`.
-- Concurrency group prevents overlapping deploys.
-- The script on the server has a lock file (`/tmp/rps-deploy.lock`).
+- Workflow: `.github/workflows/deploy.yml`
+- Триггер: `push` на `main` / `master` + ручной запуск (`workflow_dispatch`)
+- GitHub runner делает `git fetch + reset` и перезапускает сервис на сервере.
 
-## One-time setup: GitHub repository secrets
+## Разовая настройка (один раз на всё)
 
-You need three secrets in the GitHub repo `soufee/rps-battle`:
+Нужно создать 3 секрета в настройках репозитория GitHub.  
+После этого **никаких ключей на локальной машине** для деплоя не требуется.
 
-| Secret            | Value                              |
-|-------------------|------------------------------------|
-| `DEPLOY_HOST`     | `178.104.89.151`                   |
-| `DEPLOY_USER`     | `root`                             |
-| `DEPLOY_SSH_KEY`  | full content of private key file   |
+### 1. Сгенерируй пару ключей (на любом компьютере / в любом терминале)
 
-### Step-by-step (on your laptop)
-
-1. Make sure you have GitHub CLI and are logged in:
-   ```bash
-   gh auth login
-   ```
-
-2. **Generate a dedicated SSH key** (if you don't already have `~/.ssh/rps_github_actions_deploy`):
-
-   ```bash
-   ssh-keygen -t ed25519 -f ~/.ssh/rps_github_actions_deploy -C "github-actions-rps-deploy" -N ""
-   ```
-
-   This creates:
-   - `~/.ssh/rps_github_actions_deploy` (private — never commit!)
-   - `~/.ssh/rps_github_actions_deploy.pub` (public)
-
-3. **Add the public key to the server** (only needed if you generated a new key):
-
-   ```bash
-   # Copy the public key content and append on the server
-   cat ~/.ssh/rps_github_actions_deploy.pub
-   # Then on server (via your normal ssh):
-   # echo 'ssh-ed25519 AAAA... github-actions-rps-deploy' >> ~/.ssh/authorized_keys
-   ```
-
-   (The original key with this comment is already present on the server. If you reuse an existing private key that matches the authorized one, you can skip this.)
-
-4. **Set the secrets** (run from the repo directory on your laptop):
-
-   ```bash
-   cd /path/to/rps-battle
-
-   gh secret set DEPLOY_HOST -b'178.104.89.151' -R soufee/rps-battle
-   gh secret set DEPLOY_USER -b'root' -R soufee/rps-battle
-   gh secret set DEPLOY_SSH_KEY -R soufee/rps-battle < ~/.ssh/rps_github_actions_deploy
-   ```
-
-   Or use the GitHub web UI:
-   - Repo → Settings → Secrets and variables → Actions → New repository secret
-
-## Daily workflow
+Можешь сделать это где угодно — хоть на своём ноуте, хоть в GitHub Codespace, хоть в /tmp на сервере (потом удали).
 
 ```bash
-# on your laptop
-git add -A
-git commit -m "your message"
+ssh-keygen -t ed25519 -f ./rps-gh-actions-deploy -C "rps-gh-actions" -N ""
+```
+
+У тебя появятся два файла:
+- `rps-gh-actions-deploy`     ← **приватный ключ** (нужен только один раз)
+- `rps-gh-actions-deploy.pub` ← публичный ключ
+
+### 2. Добавь публичный ключ на сервер (если генерировал новый)
+
+```bash
+cat ./rps-gh-actions-deploy.pub
+```
+
+Скопируй вывод и добавь на сервер (через обычный SSH):
+
+```bash
+echo 'ssh-ed25519 AAAA...сюда_весь_вывод_из_.pub...' >> ~/.ssh/authorized_keys
+```
+
+> На сервере уже лежит один такой ключ. Если у тебя сохранился старый приватный ключ, который ему соответствует — можно использовать его.
+
+### 3. Добавь секреты через веб-интерфейс GitHub (рекомендуется)
+
+Перейди по ссылке:
+https://github.com/soufee/rps-battle/settings/secrets/actions
+
+Нажми **"New repository secret"** три раза и создай:
+
+| Name              | Secret value                                      |
+|-------------------|---------------------------------------------------|
+| `DEPLOY_HOST`     | `178.104.89.151`                                  |
+| `DEPLOY_USER`     | `root`                                            |
+| `DEPLOY_SSH_KEY`  | **полное содержимое файла** `rps-gh-actions-deploy` (приватный ключ, включая строки BEGIN/END) |
+
+Скопируй-вставь содержимое приватного ключа целиком.
+
+### 4. (Опционально) Удали локальные файлы ключа
+
+После того, как приватный ключ вставлен в секрет GitHub, файл `rps-gh-actions-deploy` на твоей машине можно удалить. Он больше не нужен для обычных деплоев.
+
+## Как теперь работает деплой
+
+Просто пушь в main **откуда угодно**:
+
+```bash
 git push origin main
 ```
 
-- Go to https://github.com/soufee/rps-battle/actions
-- Watch the "Deploy production" workflow.
-- After it finishes successfully, check https://rps-battles.com/api/v2/health
+Или через веб: Edit file → Commit directly to main.
 
-You can also trigger a deploy manually:
-- Actions tab → "Deploy production" → "Run workflow" → Run.
+GitHub сам запустит workflow "Deploy production" и сделает деплой.
 
-## What the deploy script does
+Можешь также запускать вручную:
+Actions → Deploy production → Run workflow.
 
-1. `git fetch` + hard reset to `origin/main`
-2. Backend: `npm install`, `prisma generate`, `prisma migrate deploy`
-3. Client: `npm install`, `npm run build` (web export → `client/dist`)
+## Что делает скрипт деплоя
+
+1. `git fetch` + `git reset --hard origin/main`
+2. Backend: npm install + prisma migrate
+3. Client: npm install + build
 4. `systemctl restart rps-v2-backend`
-5. Health check on `http://127.0.0.1:3001/api/v2/health`
+5. Health-check
 
-Production-only files that are never in git:
-- `backend/.env`
-- `data/mysql/`, `data/redis/`
+Секреты приложения (`backend/.env`) и данные БД/Redis остаются на сервере.
 
-## Manual / emergency deploy
-
-If you need to run deploy directly:
+## Ручной деплой (на всякий случай)
 
 ```bash
-# from your laptop
-ssh -i ~/.ssh/rps_github_actions_deploy root@178.104.89.151
-# or using your regular key:
 ssh root@178.104.89.151
-
-# then on server
 /root/www/scripts/deploy.sh
 ```
 
-## Server layout
+## Итог
 
-| Path                    | Role |
-|-------------------------|------|
-| `/root/www`             | App checkout |
-| `/root/www/backend`     | Node API + Socket.IO (`rps-v2-backend.service`) |
-| `/root/www/client/dist` | Built web UI |
-| `/root/www/backend/.env`| Secrets (not in git) |
-| `/root/www/data`        | MySQL + Redis data |
-| nginx                   | TLS → backend on :3001 |
+- Таймер на сервере удалён.
+- Деплой только через GitHub Actions.
+- После одной настройки секретов в веб-интерфейсе GitHub — пуш в main из любого места = автоматический деплой.
 
-Develop on your laptop. The server is only for production runtime.
-
+Если после добавления секретов ран всё равно падает с "missing server host" — пришли сюда ссылку на ран, посмотрим.
