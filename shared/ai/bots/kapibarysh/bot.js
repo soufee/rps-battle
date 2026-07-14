@@ -633,6 +633,17 @@ const kapibaryshBot = (() => {
         }
         s += escapes * 14;
 
+        // Character "the fortress": Kapibarysh parks its flag in the keep and
+        // refuses to march it out. Bots see a top-oriented view, so home is
+        // row 0 and any positive row means the flag has left the back rank.
+        const distFromHome = myFlag.row;
+
+        if (distFromHome > 0) {
+            const noThreat = (d1 === 0)
+                && (d2 === 0);
+            s -= distFromHome * (noThreat ? 15000 : 400);
+        }
+
         return s;
     }
 
@@ -732,7 +743,15 @@ const kapibaryshBot = (() => {
             if (typeof aiEngine !== 'undefined' && aiEngine
                     && typeof aiEngine.getAllFilteredMoves === 'function') {
                 const pieces = aiEngine.getActivePieces(gs);
-                return aiEngine.getAllFilteredMoves(gs, pieces);
+                const raw = aiEngine.getAllFilteredMoves(gs, pieces);
+                // The flag loses every battle — it may only step to empty cells,
+                // never onto an enemy. Strip any flag attack the engine allows.
+                return raw.filter(m => {
+                    if (m.piece.type !== B_FLAG) {
+                        return true;
+                    }
+                    return !(gs.board[m.row] && gs.board[m.row][m.col]);
+                });
             }
             return genMovesLocal(gs, owner);
         }

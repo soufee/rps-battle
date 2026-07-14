@@ -41,3 +41,4 @@ dist-backup*
 
 # Local backup branches / WIP
 *.local
+/client/assets/screens/

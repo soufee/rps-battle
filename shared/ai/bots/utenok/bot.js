@@ -59,11 +59,10 @@ const utenokBot = {
                 aiBeliefs.applyConstraints(gameState);
             }
 
-            // Determine playing side dynamically for side-aware heuristics
-            const myFlag = gameState.aiPieces.find(p => p.type === 'flag' && !p.removed);
-            if (myFlag) {
-                this._homeRowIsTop = myFlag.row <= 2;
-            }
+            // Bots always receive a top-oriented view (see dev-mode mirrorState):
+            // own home is row 0 and "forward" means increasing row. Pinning this
+            // avoids the side-flip bug when the flag drifts past midfield.
+            this._homeRowIsTop = true;
 
             const availablePieces = aiEngine.getActivePieces(gameState);
             if (availablePieces.length === 0) return null;
@@ -160,11 +159,17 @@ const utenokBot = {
             moves = aiEngine.getAllPossibleMoves(state, owner);
         }
 
-        // Trap Ban: never allow trap to attack a non-flag piece
+        // Flag Ban: the flag loses every battle, so an attacking flag = instant
+        // loss. The flag may only step onto empty cells, never onto an enemy.
+        // Trap Ban: never allow the trap to attack a non-flag piece.
         return moves.filter(m => {
-            if (m.piece.type === 'trap') {
-                const target = state.board[m.row] && state.board[m.row][m.col];
-                if (target && target.owner !== m.piece.owner && target.type !== 'flag') return false;
+            const target = state.board[m.row] && state.board[m.row][m.col];
+            const isEnemy = target && target.owner !== m.piece.owner;
+            if (m.piece.type === 'flag' && isEnemy) {
+                return false;
+            }
+            if (m.piece.type === 'trap' && isEnemy && target.type !== 'flag') {
+                return false;
             }
             return true;
         });
@@ -504,7 +509,21 @@ const utenokBot = {
 
         // Positioning (Side-aware)
         const forwardPos = this._getForwardBonus(myFlag, myFlag.row) / 10;
-        if (forwardPos >= 2) score -= forwardPos * 200;
+        if (forwardPos > 0) {
+            let hasThreat = false;
+            for (const e of enemyPieces) {
+                if (e.type === 'flag' || e.removed || e.immobilized) continue;
+                if (this._chebyshev(e, myFlag) <= 2) {
+                    hasThreat = true;
+                    break;
+                }
+            }
+            if (!hasThreat) {
+                score -= forwardPos * 5000;
+            } else {
+                score -= forwardPos * 200;
+            }
+        }
         
         if (myFlag.col === 0 || myFlag.col === 7) score += 30;
 

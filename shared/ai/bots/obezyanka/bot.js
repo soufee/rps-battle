@@ -541,6 +541,14 @@ const obezyankaBot = {
             const p = mv.piece;
             const m = { row: mv.row, col: mv.col };
 
+            // The flag loses every battle — never let it move onto an enemy.
+            if (p.type === 'flag') {
+                const tgt = gameState.board[m.row] && gameState.board[m.row][m.col];
+                if (tgt && tgt.owner !== p.owner) {
+                    continue;
+                }
+            }
+
             // Shuttle
             if (typeof aiEngine !== 'undefined' && aiEngine && typeof aiEngine.isShuttlePosition === 'function') {
                 if (aiEngine.isShuttlePosition(p.id, m.row, m.col)) continue;
@@ -573,7 +581,41 @@ const obezyankaBot = {
         const myFlag = gameState.aiPieces.find(p => p.type === 'flag' && !p.removed);
         if (!myFlag) return 0;
 
-        // === 1. КРИТИЧЕСКАЯ БЕЗОПАСНОСТЬ ФЛАГА (самый важный фактор) ===
+        // === 1. FLAG SAFETY — character "the trickster": the flag never charges,
+        // it dodges. Bots see a top-oriented view, so home is row 0 and forward
+        // means a higher row.
+        if (piece.type === 'flag') {
+            const movingForward = row > piece.row;
+            if (movingForward) {
+                const threatsFwd = this._getThreatsToFlag(gameState, myFlag, 2);
+                score -= (threatsFwd.length === 0) ? 6000 : 300;
+            }
+            // Slip away: reward flag moves that open up distance to the nearest
+            // enemy, punish sliding toward one — the monkey ducks, never trades.
+            let before = 99;
+            let after = 99;
+            for (const e of gameState.playerPieces) {
+                if (e.removed || e.row < 0 || e.immobilized || e.type === 'flag') {
+                    continue;
+                }
+                const db = Math.max(Math.abs(e.row - piece.row), Math.abs(e.col - piece.col));
+                const da = Math.max(Math.abs(e.row - row), Math.abs(e.col - col));
+                if (db < before) {
+                    before = db;
+                }
+                if (da < after) {
+                    after = da;
+                }
+            }
+            if (before <= 3) {
+                if (after > before) {
+                    score += 900;
+                } else if (after < before) {
+                    score -= 1500;
+                }
+            }
+        }
+
         const distBefore = Math.max(Math.abs(piece.row - myFlag.row), Math.abs(piece.col - myFlag.col));
         const distAfter = Math.max(Math.abs(row - myFlag.row), Math.abs(col - myFlag.col));
         const threats = this._getThreatsToFlag(gameState, myFlag, 3);

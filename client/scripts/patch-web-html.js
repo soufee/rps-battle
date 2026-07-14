@@ -12,6 +12,28 @@
 const fs = require('fs');
 const path = require('path');
 
+/**
+ * itch client_id is NOT a secret in the OAuth implicit flow (it ships inside the
+ * public bundle), but we keep it out of the repo for hygiene. Priority:
+ * ITCH_CLIENT_ID env var, then a git-ignored client/.env.itch file.
+ */
+function readItchClientId() {
+  if (process.env.ITCH_CLIENT_ID) {
+    return process.env.ITCH_CLIENT_ID.trim();
+  }
+  try {
+    const envPath = path.join(__dirname, '..', '.env.itch');
+    if (!fs.existsSync(envPath)) {
+      return '';
+    }
+    const content = fs.readFileSync(envPath, 'utf8');
+    const match = content.match(/^\s*ITCH_CLIENT_ID\s*=\s*(.+?)\s*$/m);
+    return match ? match[1].replace(/^["']|["']$/g, '').trim() : '';
+  } catch (_) {
+    return '';
+  }
+}
+
 const PLATFORM = process.env.PLATFORM || 'web';
 const API_URL = process.env.API_URL || 'https://rps-battles.com';
 const DIST_DIR = process.env.DIST_DIR || 'dist';
@@ -78,10 +100,10 @@ if (PLATFORM === 'fb') {
 
 if (PLATFORM === 'itch') {
   // itch.io не даёт SDK — авторизация идёт через itch OAuth (popup + backend).
-  // client_id регистрируется на itch и передаётся при сборке через ITCH_CLIENT_ID.
-  const ITCH_CLIENT_ID = process.env.ITCH_CLIENT_ID || '';
+  // client_id берётся из ITCH_CLIENT_ID или из git-ignored client/.env.itch.
+  const ITCH_CLIENT_ID = readItchClientId();
   if (!ITCH_CLIENT_ID) {
-    console.warn('WARNING: ITCH_CLIENT_ID is empty — itch OAuth login will not work until you rebuild with it set.');
+    console.warn('WARNING: ITCH_CLIENT_ID is empty — set it in client/.env.itch or as env var, then rebuild.');
   }
   platformGlobals = `
     <script>
@@ -182,6 +204,24 @@ const html = `<!DOCTYPE html>
 `;
 
 fs.writeFileSync(indexPath, html);
+
+// Expo вшивает ассеты абсолютным путём ("/assets/..."). На чужом хостинге (itch/Yandex/FB)
+// игра лежит в подпапке/iframe без корня '/', поэтому такие пути дают 404 (пустые картинки).
+// Переводим их в относительные — так же, как уже сделали для самого бандла.
+if (externalHosting) {
+  const jsFiles = fs.readdirSync(bundleDir).filter((f) => f.endsWith('.js'));
+  let rewrittenFiles = 0;
+  for (const file of jsFiles) {
+    const filePath = path.join(bundleDir, file);
+    const original = fs.readFileSync(filePath, 'utf8');
+    const patched = original.split('"/assets/').join('"./assets/');
+    if (patched !== original) {
+      fs.writeFileSync(filePath, patched);
+      rewrittenFiles += 1;
+    }
+  }
+  console.log(`Rewrote absolute /assets/ paths to relative in ${rewrittenFiles} bundle file(s)`);
+}
 
 // Facebook Instant Games требует fbapp-config.json в корне загружаемого архива
 if (PLATFORM === 'fb') {

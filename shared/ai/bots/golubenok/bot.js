@@ -307,6 +307,33 @@ const golubenokBot = (() => {
             safety += 200;
         }
 
+        // Character "the skittish dove": home is row 0 (bots see a top view).
+        // The dove bolts back home at the first hint of danger and never creeps
+        // forward. It panics early — it reacts to threats as far as 3 cells away.
+        const distFromHome = myFlag.row;
+
+        if (distFromHome > 0) {
+            let hasThreat = false;
+            for (const enemy of gs.playerPieces || []) {
+                if (enemy.removed || enemy.row < 0 || enemy.immobilized) {
+                    continue;
+                }
+                if (enemy.type === FLAG) {
+                    continue;
+                }
+                if (cheb(enemy, myFlag) <= 3) {
+                    hasThreat = true;
+                    break;
+                }
+            }
+            safety -= distFromHome * (hasThreat ? 60 : 2000);
+        }
+
+        // Edge-hugging: the dove feels safest tucked against a side wall.
+        if (myFlag.col === 0 || myFlag.col === 7) {
+            safety += 120;
+        }
+
         return safety;
     }
 
@@ -365,13 +392,22 @@ const golubenokBot = (() => {
     function generateAIMoves(gs) {
         // P0: Use filtered moves from aiEngine (filters hopeless + trap risks)
         const allMoves = aiEngine.getAllFilteredMoves(gs, aiEngine.getActivePieces(gs));
-        
+
+        // The flag loses every battle — it may never move onto an enemy cell.
+        const flagSafe = allMoves.filter(move => {
+            if (move.piece.type !== FLAG) {
+                return true;
+            }
+            const target = gs.board[move.row] && gs.board[move.row][move.col];
+            return !(target && target.owner !== move.piece.owner);
+        });
+
         // P1: Anti-shuttle for ALL pieces, not just flag
-        const filtered = allMoves.filter(move => {
+        const noShuttle = flagSafe.filter(move => {
             return !aiEngine.isShuttlePosition(move.piece.id, move.row, move.col);
         });
-        
-        return filtered.length > 0 ? filtered : allMoves;
+
+        return noShuttle.length > 0 ? noShuttle : flagSafe;
     }
 
     function findBestCapture(gs) {

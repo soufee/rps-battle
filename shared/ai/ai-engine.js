@@ -557,6 +557,19 @@ const aiEngine = {
     evaluateFlagMove(piece, row, col, gameState) {
         let score = -80;
         
+        const isAI = piece.owner === 'computer';
+        const homeRow = isAI ? 0 : 5;
+        const isMovingForward = homeRow === 0 ? (row > piece.row) : (row < piece.row);
+        const threats = this.getFlagThreats(gameState).length > 0 || this.getNearFlagThreats(gameState).length > 0;
+        
+        if (isMovingForward) {
+            if (!threats) {
+                score -= 4000;
+            } else {
+                score -= 200;
+            }
+        }
+
         const visibleThreats = this.getVisibleThreatsAtCell(row, col, gameState);
         for (const threat of visibleThreats) {
             if (threat.revealed) {

@@ -557,6 +557,27 @@ const homyachokBot = {
             if (dist <= 2) safety -= (3 - dist) * 0.5;
         }
 
+        // Character "the burrow": Homyachok hoards its flag deep in the back row,
+        // walled in by its own pieces. Bots always see a top-oriented view, so
+        // home is row 0 and any positive row means the flag has crept forward.
+        const distFromHome = ctx.myFlag.row;
+
+        if (distFromHome > 0) {
+            const noThreat = (r1Threats === 0)
+                && (r2Threats === 0);
+            safety -= distFromHome * (noThreat ? 2500 : 60);
+        } else {
+            // Deep-burrow reward: cornered flag behind a wall of defenders.
+            const cornered = (ctx.myFlag.col === 0)
+                || (ctx.myFlag.col === 7);
+            if (cornered) {
+                safety += 40;
+            }
+            if (defenders.count >= 2) {
+                safety += 30;
+            }
+        }
+
         return safety;
     },
 
@@ -727,6 +748,12 @@ const homyachokBot = {
         const FLAG = 'flag';
         const TRAP = 'trap';
 
+        // P0: The flag loses every battle, so an attacking flag = instant loss.
+        // Ban any flag move onto an occupied cell outright.
+        if (move.piece.type === FLAG && target) {
+            return -1000000;
+        }
+
         // P0: NEVER attack with TRAP (except revealed enemy FLAG which shouldn't happen)
         if (move.piece.type === TRAP && target) {
             return -1000000; // Ban trap attacks entirely
@@ -803,6 +830,9 @@ const homyachokBot = {
 
         const moves = aiEngine.getAllFilteredMoves(state, pieces);
         return moves.filter(m => {
+            if (m.piece.type === FLAG) {
+                return false;
+            }
             const target = state.board[m.row] && state.board[m.row][m.col];
             return target && target.owner === (isMaximizing ? PLAYER : COMPUTER);
         });
@@ -897,43 +927,19 @@ const homyachokBot = {
     // =========================================================================
 
     chooseFlagAndTrap() {
-        // Diversified templates (P1 fix): corners + center-lane + asymmetric
-        const templates = [
-            // Corners (40%)
-            { flag: 0, trap: 9 },   // A1, B2
-            { flag: 7, trap: 14 },  // H1, G2
-            { flag: 8, trap: 1 },   // A2, B1
-            { flag: 15, trap: 6 },  // H2, G1
-            // Center-lane defensive (40%)
-            { flag: 2, trap: 11 },  // C1, D2 - covers approach lane
-            { flag: 5, trap: 12 },  // F1, E2
-            { flag: 3, trap: 10 },  // D1, C2
-            { flag: 4, trap: 13 },  // E1, F2
-            // Asymmetric trap placement (20%) - trap NOT on diagonal
-            { flag: 1, trap: 11 },  // B1, D2 - trap covers center
-            { flag: 6, trap: 12 },  // G1, E2
-            { flag: 2, trap: 9 },   // C1, B2 - trap on adjacent file
-            { flag: 5, trap: 14 }   // F1, G2
+        // Character "the burrow": the flag is always dug into a back-row corner
+        // (row 0) with the trap dug in right in front of it. The flag never sits
+        // exposed on the forward rank — it hides as deep and walled-in as possible.
+        const dens = [
+            { flagIndex: 0, trapIndex: 9 },   // A1 flag, B2 trap (diagonal cover)
+            { flagIndex: 0, trapIndex: 8 },   // A1 flag, A2 trap (straight cover)
+            { flagIndex: 7, trapIndex: 14 },  // H1 flag, G2 trap
+            { flagIndex: 7, trapIndex: 15 },  // H1 flag, H2 trap
+            { flagIndex: 1, trapIndex: 8 },   // B1 flag, A2 trap (near-corner)
+            { flagIndex: 6, trapIndex: 15 }   // G1 flag, H2 trap
         ];
 
-        const pick = templates[Math.floor(Math.random() * templates.length)];
-
-        // Ensure trap is on row 1 (in front of flag on row 0) to intercept approach
-        let trapIndex = pick.trap;
-        let flagIndex = pick.flag;
-
-        // 30% chance to mirror A<->H for unpredictability
-        if (Math.random() < 0.3) {
-            const mirror = (idx) => {
-                const r = Math.floor(idx / 8);
-                const c = idx % 8;
-                return r * 8 + (7 - c);
-            };
-            flagIndex = mirror(flagIndex);
-            trapIndex = mirror(trapIndex);
-        }
-
-        return { flagIndex, trapIndex };
+        return dens[Math.floor(Math.random() * dens.length)];
     },
 
     // =========================================================================

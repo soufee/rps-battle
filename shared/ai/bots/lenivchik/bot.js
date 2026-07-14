@@ -273,6 +273,29 @@ var lenivchikBot = {
     _isBadMove(piece, m, gs) {
         if (!piece || !m) return true;
         var target = gs.board[m.row] && gs.board[m.row][m.col];
+
+        // Character "the sloth": the flag is far too lazy to wander. It never
+        // attacks (it loses every battle) and only stirs to slip one step onto an
+        // empty cell when an enemy is standing right next to it.
+        if (piece.type === 'flag') {
+            if (target) {
+                return true;
+            }
+            var enemies = gs.playerPieces || [];
+            var adjacentThreat = false;
+            for (var e = 0; e < enemies.length; e++) {
+                var foe = enemies[e];
+                if (!foe || foe.removed || foe.row < 0 || foe.immobilized || foe.type === 'flag') {
+                    continue;
+                }
+                if (Math.max(Math.abs(foe.row - piece.row), Math.abs(foe.col - piece.col)) === 1) {
+                    adjacentThreat = true;
+                    break;
+                }
+            }
+            return !adjacentThreat;
+        }
+
         var isCapture = !!(target && target.owner === 'player');
 
         // Жёсткий запрет горизонтального шаттла без взятия (E4↔F4 и т.п.)
