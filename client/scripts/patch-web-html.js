@@ -7,6 +7,7 @@
  *   node scripts/patch-web-html.js            # web + VK Mini Apps (hosted on rps-battles.com)
  *   PLATFORM=yandex node scripts/patch-web-html.js   # archive for Yandex Games hosting
  *   PLATFORM=fb node scripts/patch-web-html.js       # archive for Facebook Instant Games hosting
+ *   PLATFORM=itch ITCH_CLIENT_ID=xxx node scripts/patch-web-html.js  # archive for itch.io hosting
  */
 const fs = require('fs');
 const path = require('path');
@@ -31,8 +32,11 @@ if (!bundle) {
   process.exit(1);
 }
 
-// Сборки для чужого хостинга (Яндекс, FB) должны грузить бандл по относительному пути
-const externalHosting = PLATFORM === 'yandex' || PLATFORM === 'fb';
+// Сборки для чужого хостинга (Яндекс, FB, itch) должны грузить бандл по относительному
+// пути — на itch игра запускается в iframe со случайного поддомена без корня '/'.
+const externalHosting = PLATFORM === 'yandex'
+  || PLATFORM === 'fb'
+  || PLATFORM === 'itch';
 const bundleSrc = externalHosting
   ? `./_expo/static/js/web/${bundle}`
   : `/_expo/static/js/web/${bundle}`;
@@ -72,6 +76,62 @@ if (PLATFORM === 'fb') {
     </script>`;
 }
 
+if (PLATFORM === 'itch') {
+  // itch.io не даёт SDK — авторизация идёт через itch OAuth (popup + backend).
+  // client_id регистрируется на itch и передаётся при сборке через ITCH_CLIENT_ID.
+  const ITCH_CLIENT_ID = process.env.ITCH_CLIENT_ID || '';
+  if (!ITCH_CLIENT_ID) {
+    console.warn('WARNING: ITCH_CLIENT_ID is empty — itch OAuth login will not work until you rebuild with it set.');
+  }
+  platformGlobals = `
+    <script>
+      window.__RPS_PLATFORM__ = 'itch';
+      window.__RPS_API_URL__ = '${API_URL}';
+      window.__ITCH_CLIENT_ID__ = '${ITCH_CLIENT_ID}';
+    </script>`;
+}
+
+// itch.io: игра горизонтальная — на телефоне в портрете показываем подсказку повернуть.
+// Чистый CSS/HTML, без завязки на React, работает только в itch-сборке.
+let rotateHintCss = '';
+let rotateHintHtml = '';
+if (PLATFORM === 'itch') {
+  rotateHintCss = `
+      #rotate-hint {
+        display: none;
+      }
+      @media (orientation: portrait) and (pointer: coarse) {
+        #rotate-hint {
+          display: flex;
+          position: fixed;
+          inset: 0;
+          z-index: 99999;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 16px;
+          background: #e8e2d8;
+          color: #333;
+          font-family: sans-serif;
+          text-align: center;
+          padding: 24px;
+        }
+        #rotate-hint .rot-emoji {
+          font-size: 56px;
+          animation: rot-turn 1.6s ease-in-out infinite;
+        }
+        @keyframes rot-turn {
+          0%, 100% { transform: rotate(0deg); }
+          50% { transform: rotate(90deg); }
+        }
+      }`;
+  rotateHintHtml = `
+    <div id="rotate-hint">
+      <div class="rot-emoji">📱</div>
+      <div>Поверните устройство горизонтально<br/>Please rotate your device to landscape</div>
+    </div>`;
+}
+
 const html = `<!DOCTYPE html>
 <html lang="ru">
   <head>
@@ -109,13 +169,13 @@ const html = `<!DOCTYPE html>
         body {
           overflow: auto;
         }
-      }
+      }${rotateHintCss}
     </style>
     <link rel="icon" href="${externalHosting ? './favicon.ico' : '/favicon.ico'}" />
   </head>
   <body>
     <noscript>Для игры нужен JavaScript.</noscript>
-    <div id="root"></div>
+    <div id="root"></div>${rotateHintHtml}
     <script src="${bundleSrc}" defer></script>
   </body>
 </html>

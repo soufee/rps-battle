@@ -40,6 +40,8 @@ import {
   authFacebookInstant,
   authYandexGames,
   authGuest,
+  authItch,
+  itchOAuthCallbackPage,
   mintToken
 } from './controllers/auth.js';
 import { updateStats, getProfile, resetTournament, updateNickname } from './controllers/stats.js';
@@ -105,6 +107,9 @@ app.post('/api/v2/auth/facebook/diagnostics', (req, res) => {
 });
 app.post('/api/v2/auth/yandex', authYandexGames);
 app.post('/api/v2/auth/guest', authGuest);
+// itch.io OAuth: обмен access_token на наш JWT + страница-приёмник redirect
+app.post('/api/v2/auth/itch', authItch);
+app.get('/auth/itch/callback', itchOAuthCallbackPage);
 
 // Serve Static built files for React Native Web Client
 const clientDistPath = path.join(__dirname, '../../client/dist');

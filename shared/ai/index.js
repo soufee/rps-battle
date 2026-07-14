@@ -28,6 +28,7 @@ import './bots/golubenok/bot.js';
 import './bots/akulenok/bot.js';
 import './bots/orlenok/bot.js';
 import './bots/kapibarysh/bot.js';
+import './bots/strategist/bot.js';
 
 import './dev-mode.js';
 

@@ -19,6 +19,7 @@ enum Platform {
   vk
   facebook
   yandex
+  itch
 }
 
 enum FriendStatus {

@@ -61,6 +61,10 @@ import {
   hasVkLaunchParams,
   isVkPlatformSession,
 } from './shared/platform-auth.js';
+import {
+  isItchRuntime,
+  startItchLogin,
+} from './shared/itch-auth.js';
 
 
 const getBaseUrl = () => {
@@ -982,6 +986,8 @@ export default function App() {
   // Managed platform auth: авто-вход без выбора провайдера (VK iframe / FB Instant)
   const vkPlatformSession = isVkPlatformSession();
   const isManagedEntry = vkPlatformSession || isFacebookInstant;
+  // itch.io: авторизация только через itch OAuth (без гостя и других провайдеров)
+  const isItch = isItchRuntime();
   // Скрытие кнопки «Выйти» на /vk (путь) и в FB Instant
   const hidePlatformLogout = IS_VK_ENTRY || isFacebookInstant;
 
@@ -1979,6 +1985,23 @@ export default function App() {
     }
   };
 
+  // itch.io: авторизованный вход через itch OAuth (popup + backend). Требует
+  // клика пользователя, поэтому вызывается кнопкой на экране входа.
+  const handleItchLogin = async () => {
+    try {
+      setError(null);
+      const data = await startItchLogin({ baseUrl: BASE_URL });
+      await storage.setItem('token', data.accessToken);
+      await storage.setItem('refreshToken', data.refreshToken);
+      await storage.removeItem('logout_flag');
+      setToken(data.accessToken);
+      setUser(data.user);
+    } catch (err) {
+      console.error('itch.io login error:', err);
+      setError(tr('itchLoginFailed'));
+    }
+  };
+
   const handleLogout = async () => {
     // Never tear down championship UI mid-match (screenshots need the board)
     if (isChampMode) return;
@@ -2872,34 +2895,42 @@ export default function App() {
                 <Text style={brandStyles.authCardTitle}>{tr('authTitle')}</Text>
                 <Text style={brandStyles.subtitle}>{tr('authDesc')}</Text>
 
-                {isWebPlatform && (
+                {isItch && (
+                  <TouchableOpacity style={brandStyles.loginBtn} onPress={handleItchLogin}>
+                    <Text style={brandStyles.loginBtnText}>{tr('loginItch')}</Text>
+                  </TouchableOpacity>
+                )}
+
+                {isWebPlatform && !isItch && (
                   <TouchableOpacity style={brandStyles.loginBtn} onPress={handleLogin}>
                     <Text style={brandStyles.loginBtnText}>{tr('loginGoogle')}</Text>
                   </TouchableOpacity>
                 )}
 
-                {isWebPlatform && (
+                {isWebPlatform && !isItch && (
                   <TouchableOpacity style={brandStyles.loginBtnVk} onPress={handleVKIDLogin}>
                     <Text style={brandStyles.loginBtnVkText}>{tr('loginVkId')}</Text>
                   </TouchableOpacity>
                 )}
 
-                {isWebPlatform && !isFacebookInstant && (
+                {isWebPlatform && !isFacebookInstant && !isItch && (
                   <TouchableOpacity style={brandStyles.loginBtnFb} onPress={handleFacebookLogin}>
                     <Text style={brandStyles.loginBtnFbText}>{tr('loginFacebook')}</Text>
                   </TouchableOpacity>
                 )}
 
-                <TouchableOpacity
-                  style={[brandStyles.loginBtnGuest, !isWebPlatform && brandStyles.loginBtnGuestPrimary]}
-                  onPress={handleGuestLogin}
-                >
-                  <Text style={[brandStyles.loginBtnGuestText, !isWebPlatform && brandStyles.loginBtnGuestTextPrimary]}>
-                    {tr('playAsGuest')}
-                  </Text>
-                </TouchableOpacity>
+                {!isItch && (
+                  <TouchableOpacity
+                    style={[brandStyles.loginBtnGuest, !isWebPlatform && brandStyles.loginBtnGuestPrimary]}
+                    onPress={handleGuestLogin}
+                  >
+                    <Text style={[brandStyles.loginBtnGuestText, !isWebPlatform && brandStyles.loginBtnGuestTextPrimary]}>
+                      {tr('playAsGuest')}
+                    </Text>
+                  </TouchableOpacity>
+                )}
 
-                {isLocalhost && (
+                {isLocalhost && !isItch && (
                   <TouchableOpacity style={brandStyles.loginBtnDev} onPress={handleDevLogin}>
                     <Text style={brandStyles.loginBtnDevText}>Войти как DevTester (Admin)</Text>
                   </TouchableOpacity>

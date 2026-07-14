@@ -891,6 +891,117 @@ export async function authYandexGames(req, res) {
   }
 }
 
+/**
+ * itch.io OAuth: клиент присылает access_token, полученный из itch OAuth popup.
+ * Токен проверяется server-side через api.itch.io (единственный источник правды),
+ * после чего создаётся/находится пользователь платформы 'itch' и выдаётся наш JWT.
+ */
+export async function authItch(req, res) {
+  const { accessToken } = req.body || {};
+  if (!accessToken || typeof accessToken !== 'string') {
+    return res.status(400).json({ error: 'accessToken is required' });
+  }
+
+  try {
+    const profileRes = await fetch('https://api.itch.io/profile', {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    if (!profileRes.ok) {
+      return res.status(401).json({ error: 'Invalid itch.io access token' });
+    }
+
+    const profileJson = await profileRes.json();
+    const itchUser = profileJson && profileJson.user;
+    if (!itchUser || itchUser.id === undefined || itchUser.id === null) {
+      return res.status(401).json({ error: 'itch.io profile unavailable' });
+    }
+
+    const externalId = String(itchUser.id);
+    const itchName = itchUser.username || itchUser.display_name || 'itch_player';
+    const itchAvatar = itchUser.cover_url || null;
+
+    let user = await prisma.user.findFirst({
+      where: { externalId, platform: 'itch' },
+      include: { stats: true }
+    });
+
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          nickname: itchName + '_' + crypto.randomBytes(3).toString('hex'),
+          avatarUrl: itchAvatar,
+          platform: 'itch',
+          externalId,
+          stats: { create: {} }
+        },
+        include: { stats: true }
+      });
+    } else if (itchAvatar && itchAvatar !== user.avatarUrl) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: { avatarUrl: itchAvatar },
+        include: { stats: true }
+      });
+    }
+
+    if (user.isBanned && user.bannedUntil && new Date() < user.bannedUntil) {
+      return res.status(403).json({ error: `User is banned: ${user.bannedReason}` });
+    }
+
+    const tokens = generateTokens(user);
+    res.json({ user, ...tokens });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+}
+
+/**
+ * Страница-приёмник itch OAuth redirect. itch отдаёт access_token в hash URL,
+ * который не виден серверу, поэтому страница читает его в браузере и передаёт
+ * в открывшее её окно игры через postMessage, затем закрывается.
+ */
+export function itchOAuthCallbackPage(req, res) {
+  res.type('text/html; charset=utf-8').send(`<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>itch.io login</title>
+</head>
+<body style="font-family:sans-serif;background:#e8e2d8;color:#333;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
+  <div>Готово, можно вернуться в игру…</div>
+  <script>
+    (function () {
+      function parseHash(hash) {
+        var out = {};
+        (hash || '').replace(/^#/, '').split('&').forEach(function (kv) {
+          if (!kv) return;
+          var p = kv.split('=');
+          out[decodeURIComponent(p[0])] = decodeURIComponent(p[1] || '');
+        });
+        return out;
+      }
+      var h = parseHash(window.location.hash);
+      var msg = {
+        type: 'itch-oauth',
+        state: h.state || null,
+        accessToken: h.access_token || null,
+        error: h.error || null
+      };
+      try {
+        if (window.opener) {
+          window.opener.postMessage(msg, '*');
+        }
+      } catch (e) {}
+      setTimeout(function () {
+        try { window.close(); } catch (e) {}
+      }, 300);
+    })();
+  </script>
+</body>
+</html>`);
+}
+
 function verifyYandexSignature(signature, secret) {
   if (!signature || typeof signature !== 'string') return null;
   const dot = signature.indexOf('.');

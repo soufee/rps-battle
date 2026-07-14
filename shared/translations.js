@@ -152,6 +152,8 @@ export const TRANSLATIONS = {
     loginVkId: "Sign in with VK ID",
     loginFacebook: "Sign in with Facebook",
     playAsGuest: "Play without registration",
+    loginItch: "Sign in with itch.io",
+    itchLoginFailed: "itch.io sign-in failed",
     guestLoginFailed: "Guest sign-in failed. Check your internet connection.",
     profileLoadFailed: "Failed to load profile",
 
@@ -465,6 +467,8 @@ export const TRANSLATIONS = {
     loginVkId: "Войти через VK ID",
     loginFacebook: "Войти через Facebook",
     playAsGuest: "Играть без регистрации",
+    loginItch: "Войти через itch.io",
+    itchLoginFailed: "Не удалось войти через itch.io",
     guestLoginFailed: "Не удалось войти гостем. Проверьте соединение с интернетом.",
     profileLoadFailed: "Не удалось загрузить профиль",
 
@@ -724,6 +728,8 @@ export const TRANSLATIONS = {
     loginVkId: "Se connecter avec VK ID",
     loginFacebook: "Se connecter avec Facebook",
     playAsGuest: "Jouer sans inscription",
+    loginItch: "Se connecter avec itch.io",
+    itchLoginFailed: "Échec de la connexion itch.io",
     guestLoginFailed: "Connexion invité impossible. Vérifiez votre connexion Internet.",
     profileLoadFailed: "Impossible de charger le profil",
 
@@ -971,6 +977,8 @@ export const TRANSLATIONS = {
     loginVkId: "Mit VK ID anmelden",
     loginFacebook: "Mit Facebook anmelden",
     playAsGuest: "Ohne Registrierung spielen",
+    loginItch: "Mit itch.io anmelden",
+    itchLoginFailed: "itch.io-Anmeldung fehlgeschlagen",
     guestLoginFailed: "Gast-Anmeldung fehlgeschlagen. Prüfe deine Internetverbindung.",
     profileLoadFailed: "Profil konnte nicht geladen werden",
 
@@ -1218,6 +1226,8 @@ export const TRANSLATIONS = {
     loginVkId: "Iniciar sesión con VK ID",
     loginFacebook: "Iniciar sesión con Facebook",
     playAsGuest: "Jugar sin registro",
+    loginItch: "Iniciar sesión con itch.io",
+    itchLoginFailed: "Error al iniciar sesión con itch.io",
     guestLoginFailed: "No se pudo entrar como invitado. Comprueba tu conexión a Internet.",
     profileLoadFailed: "No se pudo cargar el perfil",
 
@@ -1465,6 +1475,8 @@ export const TRANSLATIONS = {
     loginVkId: "VK ID ile giriş yap",
     loginFacebook: "Facebook ile giriş yap",
     playAsGuest: "Kayıt olmadan oyna",
+    loginItch: "itch.io ile giriş yap",
+    itchLoginFailed: "itch.io girişi başarısız",
     guestLoginFailed: "Misafir girişi başarısız. İnternet bağlantını kontrol et.",
     profileLoadFailed: "Profil yüklenemedi",
 
@@ -1712,6 +1724,8 @@ export const TRANSLATIONS = {
     loginVkId: "تسجيل الدخول عبر VK ID",
     loginFacebook: "تسجيل الدخول عبر Facebook",
     playAsGuest: "اللعب بدون تسجيل",
+    loginItch: "تسجيل الدخول عبر itch.io",
+    itchLoginFailed: "فشل تسجيل الدخول عبر itch.io",
     guestLoginFailed: "فشل الدخول كضيف. تحقق من اتصالك بالإنترنت.",
     profileLoadFailed: "تعذر تحميل الملف الشخصي",
 
@@ -1959,6 +1973,8 @@ export const TRANSLATIONS = {
     loginVkId: "使用 VK ID 登录",
     loginFacebook: "使用 Facebook 登录",
     playAsGuest: "免注册游玩",
+    loginItch: "使用 itch.io 登录",
+    itchLoginFailed: "itch.io 登录失败",
     guestLoginFailed: "访客登录失败，请检查网络连接。",
     profileLoadFailed: "无法加载个人资料",
 
