@@ -35,7 +35,15 @@ import {
   resolveDevModeTie
 } from './shared/game-core.js';
 import { getValidMoves } from './shared/game-rules.js';
-import { botRegistry, devMode, aiEngine } from './shared/ai/index.js';
+import {
+  botRegistry,
+  devMode,
+  aiEngine,
+  configureBotLoader,
+  loadBotCatalog,
+  ensureBotLoaded,
+  ensureBotsLoaded
+} from './shared/ai/index.js';
 import {
   GAME_CONFIG,
   PIECE_SYMBOLS,
@@ -953,6 +961,9 @@ export default function App() {
   const [token, setToken] = useState(null);
   const [user, setUser] = useState(null);
   const [error, setError] = useState(null);
+  // Roster metadata is fetched from the backend at startup so bots can be
+  // added/edited without rebuilding the client.
+  const [botsReady, setBotsReady] = useState(false);
 
   // Nickname settings state
   const [nicknameInput, setNicknameInput] = useState('');
@@ -971,6 +982,25 @@ export default function App() {
     setLoadProgress(1);
     setTimeout(() => setLoading(false), 240);
   };
+
+  // Configure the runtime bot loader and fetch the roster once on mount. Bot
+  // code itself is fetched on demand when a match starts (ensureBotLoaded).
+  useEffect(() => {
+    configureBotLoader(BASE_URL, storage);
+    let alive = true;
+    loadBotCatalog()
+      .catch((err) => {
+        console.warn('[bots] catalog load failed:', err);
+      })
+      .finally(() => {
+        if (alive) {
+          setBotsReady(true);
+        }
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   // Screen state: 'lobby', 'arena', 'arena_private', 'arena_open', 'bot_select', 'game', 'profile', 'matchmaking', 'botchamp'
   const [screen, setScreen] = useState('lobby');
@@ -1056,8 +1086,10 @@ export default function App() {
   useEffect(() => {
     if (!isChampMode || !user || screen === 'game') return undefined;
 
-    const startTimer = setTimeout(() => {
+    const startTimer = setTimeout(async () => {
       try {
+        // Championship matches pit two bots against each other — load both first.
+        await ensureBotsLoaded([topBotParam, bottomBotParam]);
         setGameMode('pve');
         const freshGame = initGame(topBotParam);
         startDevMatch(freshGame, topBotParam, bottomBotParam);
@@ -2183,8 +2215,18 @@ export default function App() {
   };
 
   // --- Game actions ---
-  const handleStartBotGame = (botIdOverride, options = {}) => {
+  const handleStartBotGame = async (botIdOverride, options = {}) => {
     const botId = botIdOverride || selectedBotId;
+    // Fetch the opponent's code before the match so its setup/moves are ready.
+    try {
+      await ensureBotLoaded(botId);
+    } catch (err) {
+      console.error('[bots] failed to load opponent:', err);
+      if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+        window.alert(tr('botLoadFailed'));
+      }
+      return;
+    }
     setIsTournamentActive(options.isTournament === true);
     setSelectedBotId(botId);
     setGameMode('pve');

@@ -19,6 +19,7 @@ import {
   getAllBots
 } from './botchamp/BotDiscovery.js';
 import TournamentEngine from './botchamp/TournamentEngine.js';
+import { buildBotCatalog, resolveBotCode } from './bots/catalogService.js';
 
 // Load env
 dotenv.config();
@@ -115,7 +116,36 @@ app.get('/auth/itch/callback', itchOAuthCallbackPage);
 const clientDistPath = path.join(__dirname, '../../client/dist');
 const botsStaticPath = path.join(__dirname, '../../shared/ai/bots');
 const docsStaticPath = path.join(__dirname, '../../docs');
-// Bot avatars (public) — must be registered before SPA fallback
+// Bot roster metadata (public) — the client fetches this at startup to build
+// the selection screen without bundling any bot code.
+app.get(['/api/v2/bots', '/v2/api/v2/bots'], (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-cache');
+    res.json(buildBotCatalog());
+  } catch (e) {
+    console.error('[bots] failed to build catalog:', e);
+    res.status(500).json({ error: 'bot_catalog_failed' });
+  }
+});
+// Hash-validated bot code for client-side caching. The client sends the hash of
+// its cached copy via ?have=<hash>; the server replies "up_to_date" (reuse the
+// cache) or "updated" (here is the new code). This avoids re-downloading a bot
+// the client already holds while guaranteeing it always runs the latest logic.
+app.get(['/api/v2/bots/:id/code', '/v2/api/v2/bots/:id/code'], (req, res) => {
+  try {
+    const result = resolveBotCode(req.params.id, req.query.have);
+    if (result.status === 'not_found') {
+      return res.status(404).json({ error: 'bot_not_found' });
+    }
+    res.set('Cache-Control', 'no-cache');
+    return res.json(result);
+  } catch (e) {
+    console.error('[bots] failed to resolve bot code:', e);
+    return res.status(500).json({ error: 'bot_code_failed' });
+  }
+});
+// Bot code + avatars (public) — must be registered before SPA fallback.
+// Bot logic is fetched on demand from /js/bots/<id>/bot.js at match start.
 app.use('/js/bots', express.static(botsStaticPath));
 app.use('/v2/js/bots', express.static(botsStaticPath));
 // Публичные инструкции — доступны по прямому URL без авторизации

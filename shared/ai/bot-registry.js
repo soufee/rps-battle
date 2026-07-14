@@ -16,35 +16,14 @@
  */
 
 import { isValidBotId } from '../bot-guard.js';
+import { BOT_CATALOG } from './bots/catalog.js';
 
-/** Map of centralized baby animal name, emoji, and description overrides for all 20 bots. */
-const BOT_METADATA_OVERRIDES = {
-    // Easy (Зелёные)
-    rabbit: { name: 'Зайчик', emoji: '🐰', shortDescription: 'Реактивная эвристика', difficultyLabel: 'Лёгкий', tier: 'easy', stars: 1 },
-    homyachok: { name: 'Хомячок', emoji: '🐹', shortDescription: 'Случайные шаги и простая защита', difficultyLabel: 'Лёгкий', tier: 'easy', stars: 1 },
-    utenok: { name: 'Утёнок', emoji: '🦆', shortDescription: 'Базовый эвристический поиск', difficultyLabel: 'Лёгкий', tier: 'easy', stars: 1 },
-    golubenok: { name: 'Голубёнок', emoji: '🐦', shortDescription: 'Пассивные защитные маневры', difficultyLabel: 'Лёгкий', tier: 'easy', stars: 1 },
-    obezyanka: { name: 'Обезьянка', emoji: '🐵', shortDescription: 'Агрессивная тактика без глубины', difficultyLabel: 'Лёгкий', tier: 'easy', stars: 1 },
-    lenivchik: { name: 'Ленивчик', emoji: '🦥', shortDescription: 'Медленная реактивная стратегия', difficultyLabel: 'Лёгкий', tier: 'easy', stars: 1 },
-    kapibarysh: { name: 'Капибарыш', emoji: '🦦', shortDescription: 'Миролюбивый оборонительный стиль', difficultyLabel: 'Лёгкий', tier: 'easy', stars: 1 },
-
-    // Medium (Жёлтые)
-    raccoon: { name: 'Енотик', emoji: '🦝', shortDescription: 'Паттерн-анализ и хитрый расчёт', difficultyLabel: 'Средний', tier: 'medium', stars: 2 },
-    fox: { name: 'Лисёнок', emoji: '🦊', shortDescription: 'Коварные уловки и фланговые обходы', difficultyLabel: 'Средний', tier: 'medium', stars: 2 },
-    hedgehog: { name: 'Ёжик', emoji: '🦔', shortDescription: 'Крепкая глухая оборона', difficultyLabel: 'Средний', tier: 'medium', stars: 2 },
-    raven: { name: 'Воронёнок', emoji: '🐦‍⬛', shortDescription: 'Стратегический подрыв капканами', difficultyLabel: 'Средний', tier: 'medium', stars: 2 },
-    wolf: { name: 'Волчонок', emoji: '🐺', shortDescription: 'Агрессивное стайное наступление', difficultyLabel: 'Средний', tier: 'medium', stars: 2 },
-    lion: { name: 'Львёнок', emoji: '🦁', shortDescription: 'Королевский баланс атаки и защиты', difficultyLabel: 'Средний', tier: 'medium', stars: 2 },
-    bobrenok: { name: 'Бобрёнок', emoji: '🦫', shortDescription: 'Строит оборонительные редуты', difficultyLabel: 'Средний', tier: 'medium', stars: 2 },
-
-    // Hard (Красные)
-    owl: { name: 'Совёнок', emoji: '🦉', shortDescription: 'Глубокий минимакс поиск (3-4 шага)', difficultyLabel: 'Сложный', tier: 'hard', stars: 3 },
-    losenok: { name: 'Лосёнок', emoji: '🫎', shortDescription: 'Многозадачное позиционное планирование', difficultyLabel: 'Сложный', tier: 'hard', stars: 3 },
-    leopardik: { name: 'Леопардик', emoji: '🐆', shortDescription: 'Молниеносные контратаки и обман', difficultyLabel: 'Сложный', tier: 'hard', stars: 3 },
-    orlenok: { name: 'Орлёнок', emoji: '🦅', shortDescription: 'Абсолютный позиционный контроль', difficultyLabel: 'Сложный', tier: 'hard', stars: 3 },
-    medvezhonok: { name: 'Медвежонок', emoji: '🐻', shortDescription: 'Тяжёлое доминирующее давление', difficultyLabel: 'Сложный', tier: 'hard', stars: 3 },
-    akulenok: { name: 'Акулёнок', emoji: '🦈', shortDescription: 'Хищные неожиданные выпады', difficultyLabel: 'Сложный', tier: 'hard', stars: 3 }
-};
+/**
+ * Centralized display metadata (name, emoji, difficulty, description) for the
+ * whole roster. Shared with the backend via bots/catalog.js so the selection
+ * screen and the gameplay descriptor never disagree.
+ */
+const BOT_METADATA_OVERRIDES = BOT_CATALOG;
 
 const MODEL_BOT_IDS = new Set([]);
 
@@ -58,6 +37,43 @@ const botRegistry = {
     _bots: [],
     _byId: new Map(),
     _sealed: false,
+    // Lightweight roster metadata fetched from the backend. Populates the
+    // selection screen WITHOUT loading each bot's code. Entries have the same
+    // display shape as registered bots but no move()/chooseFlagAndTrap().
+    _catalog: [],
+    _catalogById: new Map(),
+
+    /**
+     * Publish the roster metadata received from the backend. Each entry:
+     *   { id, name, emoji, avatar, tier, stars, difficultyLabel,
+     *     shortDescription, version }
+     * `version` is used for cache-busting when the bot code is fetched.
+     */
+    setCatalog(list) {
+        const arr = Array.isArray(list) ? list : [];
+        this._catalog = arr.slice();
+        this._catalogById = new Map();
+        for (const meta of arr) {
+            if (meta && meta.id) {
+                this._catalogById.set(meta.id, meta);
+            }
+        }
+        return this._catalog;
+    },
+
+    /**
+     * Display metadata for a bot id: prefers the loaded descriptor, falls back
+     * to catalog metadata (available before the code is fetched).
+     */
+    getMeta(id) {
+        return this._byId.get(id) || this._catalogById.get(id) || null;
+    },
+
+    /** Version tag for a bot id (for cache-busting the code request). */
+    getVersion(id) {
+        const meta = this._catalogById.get(id);
+        return meta && meta.version ? meta.version : null;
+    },
 
     /**
      * Lock the registry after the official roster is loaded. Once sealed, no bot
@@ -165,16 +181,23 @@ const botRegistry = {
         if (bot) {
             return bot;
         }
+        // Before a bot's code is fetched, expose its catalog metadata so UI
+        // lookups (name/emoji/avatar) work. Callers that need gameplay methods
+        // must ensure the code is loaded first (see ensureBotLoaded).
+        const meta = this._catalogById.get(id);
+        if (meta) {
+            return meta;
+        }
         const fallback = this._byId.get('rabbit') || this._bots[0] || null;
         if (fallback && id) {
             console.warn(`botRegistry.get: unknown bot "${id}", falling back to "${fallback.id}"`);
         }
         return fallback;
     },
-    
+
     list() {
         const tierOrder = { easy: 1, medium: 2, hard: 3 };
-        return this._bots.slice().sort((a, b) => {
+        const sorter = (a, b) => {
             const starsDiff = (a.stars || 0) - (b.stars || 0);
             if (starsDiff !== 0) {
                 return starsDiff;
@@ -184,11 +207,18 @@ const botRegistry = {
                 return tierDiff;
             }
             return String(a.name || a.id).localeCompare(String(b.name || b.id), 'ru');
-        });
+        };
+        // Prefer the backend catalog (drives the selection screen without loading
+        // any bot code); fall back to the registered bots when no catalog is set.
+        const source = this._catalog.length > 0 ? this._catalog : this._bots;
+        return source.slice().sort(sorter);
     },
     
     getDefaultId() {
-        return this._bots.length > 0 ? this._bots[0].id : null;
+        if (this._bots.length > 0) {
+            return this._bots[0].id;
+        }
+        return this._catalog.length > 0 ? this._catalog[0].id : null;
     },
     
     /**
@@ -197,7 +227,10 @@ const botRegistry = {
      * or legacy code always ends up on the easiest bot.
      */
     getFallbackId() {
-        return this.has('rabbit') ? 'rabbit' : this.getDefaultId();
+        if (this.has('rabbit') || this._catalogById.has('rabbit')) {
+            return 'rabbit';
+        }
+        return this.getDefaultId();
     }
 };
 
