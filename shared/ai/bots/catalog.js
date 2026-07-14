@@ -39,8 +39,7 @@ export const BOT_CATALOG = {
     leopardik: { name: 'Леопардик', emoji: '🐆', shortDescription: 'Молниеносные контратаки и обман', difficultyLabel: 'Сложный', tier: 'hard', stars: 3 },
     orlenok: { name: 'Орлёнок', emoji: '🦅', shortDescription: 'Абсолютный позиционный контроль', difficultyLabel: 'Сложный', tier: 'hard', stars: 3 },
     medvezhonok: { name: 'Медвежонок', emoji: '🐻', shortDescription: 'Тяжёлое доминирующее давление', difficultyLabel: 'Сложный', tier: 'hard', stars: 3 },
-    akulenok: { name: 'Акулёнок', emoji: '🦈', shortDescription: 'Хищные неожиданные выпады', difficultyLabel: 'Сложный', tier: 'hard', stars: 3 },
-    strategist: { name: 'Стратег', emoji: '🧠', shortDescription: 'Продвинутое стратегическое планирование', difficultyLabel: 'Сложный', tier: 'hard', stars: 3 }
+    akulenok: { name: 'Акулёнок', emoji: '🦈', shortDescription: 'Хищные неожиданные выпады', difficultyLabel: 'Сложный', tier: 'hard', stars: 3 }
 };
 
 // The roster order as it should appear on the selection screen.
@@ -64,8 +63,7 @@ export const ENABLED_ORDER = [
     'golubenok',
     'akulenok',
     'orlenok',
-    'kapibarysh',
-    'strategist'
+    'kapibarysh'
 ];
 
 // Where each bot folder lives, relative to the site root that serves it.

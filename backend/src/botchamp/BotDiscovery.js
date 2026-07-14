@@ -30,8 +30,7 @@ const OFFICIAL_NAMES = {
   golubenok: 'Голубёнок',
   akulenok: 'Акулёнок',
   orlenok: 'Орлёнок',
-  kapibarysh: 'Капибарыш',
-  strategist: 'Стратег'
+  kapibarysh: 'Капибарыш'
 };
 
 // Cache of id -> { name, emoji } parsed from each bot's bot.js.

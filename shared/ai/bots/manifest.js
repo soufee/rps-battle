@@ -46,8 +46,7 @@ window.RPS_BOT_MANIFEST = {
         'golubenok',
         'akulenok',
         'orlenok',
-        'kapibarysh',
-        'strategist'
+        'kapibarysh'
     ],
 
     // Base path under which every bot folder lives (relative to index.html).
