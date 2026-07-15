@@ -1,5 +1,6 @@
 import { GAME_CONFIG, PLAYER, COMPUTER, FLAG, TRAP, PIECE_TYPES, PIECE_SYMBOLS, BOARD_WIDTH, BOARD_HEIGHT } from '../game-config.js';
 import { resolveBattle } from '../game-rules.js';
+import aiSearch from './ai-search.js';
 
 const aiEngine = {
     // Кеш позиций для оптимизации
@@ -1351,58 +1352,63 @@ const aiEngine = {
      */
     minimax(state, depth, alpha, beta, isMaximizing) {
         // Проверяем кеш
-        const cacheKey = this.getStateHash(state);
+        const cacheKey = `${depth}|${isMaximizing ? 'max' : 'min'}|${this.getStateHash(state)}`;
         if (this.positionCache.has(cacheKey)) {
             return this.positionCache.get(cacheKey);
         }
         
         // Терминальные условия
-        if (depth === 0 || this.isGameOver(state)) {
+        if (depth === 0
+            || this.isGameOver(state)) {
             const score = this.evaluatePositionV2(state);
             return { score, move: null };
         }
-        
-        if (isMaximizing) {
-            let maxEval = -Infinity;
-            let bestMove = null;
-            
-            const moves = this.getAllPossibleMoves(state, COMPUTER);
-            for (const move of moves) {
-                const newState = this.makeVirtualMove(state, move);
-                const result = this.minimax(newState, depth - 1, alpha, beta, false);
-                
-                if (result.score > maxEval) {
-                    maxEval = result.score;
-                    bestMove = move;
-                }
-                
-                alpha = Math.max(alpha, result.score);
-                if (beta <= alpha) break;
-            }
-            
-            const result = { score: maxEval, move: bestMove };
-            this.cachePosition(cacheKey, result);
-            return result;
-        } else {
-            let minEval = Infinity;
-            let bestMove = null;
-            
-            const moves = this.getAllPossibleMoves(state, PLAYER);
-            for (const move of moves) {
-                const newState = this.makeVirtualMove(state, move);
-                const result = this.minimax(newState, depth - 1, alpha, beta, true);
-                
-                if (result.score < minEval) {
-                    minEval = result.score;
-                    bestMove = move;
-                }
-                
-                beta = Math.min(beta, result.score);
-                if (beta <= alpha) break;
-            }
-            
-            return { score: minEval, move: bestMove };
+
+        const owner = isMaximizing ? COMPUTER : PLAYER;
+        const moves = this.getAllPossibleMoves(state, owner);
+        if (moves.length === 0) {
+            const score = this.evaluatePositionV2(state);
+            return { score, move: null };
         }
+        let bestScore = isMaximizing ? -Infinity : Infinity;
+        let bestMove = null;
+        for (const move of moves) {
+            const outcomes = aiSearch.getMoveOutcomes(state, move);
+            let moveScore = this.evaluatePositionV2(state);
+            if (outcomes.length > 0) {
+                moveScore = 0;
+                for (const outcome of outcomes) {
+                    const child = this.minimax(
+                        outcome.state,
+                        depth - 1,
+                        -Infinity,
+                        Infinity,
+                        !isMaximizing
+                    );
+                    moveScore += outcome.probability * child.score;
+                }
+            }
+            if (isMaximizing
+                && moveScore > bestScore) {
+                bestScore = moveScore;
+                bestMove = move;
+            } else if (!isMaximizing
+                && moveScore < bestScore) {
+                bestScore = moveScore;
+                bestMove = move;
+            }
+            if (isMaximizing) {
+                alpha = Math.max(alpha, moveScore);
+            } else {
+                beta = Math.min(beta, moveScore);
+            }
+            if (beta <= alpha) {
+                return { score: bestScore, move: bestMove };
+            }
+        }
+        const result = { score: bestScore, move: bestMove };
+        this.cachePosition(cacheKey, result);
+        return result;
     },
     
     /**
@@ -1410,6 +1416,16 @@ const aiEngine = {
      */
     evaluatePositionV2(state) {
         let score = 0;
+        const terminal = aiSearch.getTerminalOutcome(state);
+        if (terminal) {
+            if (terminal.outcome === 'win') {
+                return GAME_CONFIG.SCORING.FLAG_CAPTURE;
+            }
+            if (terminal.outcome === 'lose') {
+                return -GAME_CONFIG.SCORING.FLAG_CAPTURE;
+            }
+            return 0;
+        }
         
         // Материальная оценка
         const aiPieceCount = state.aiPieces.filter(p => !p.removed).length;
@@ -1419,16 +1435,17 @@ const aiEngine = {
         
         // Оценка безопасности флагов
         const aiFlag = state.aiPieces.find(p => p.type === FLAG && !p.removed);
-        const playerFlag = state.playerPieces.find(p => p.type === FLAG && !p.removed);
-        
-        if (!aiFlag) return -GAME_CONFIG.SCORING.FLAG_CAPTURE;
-        if (!playerFlag) return GAME_CONFIG.SCORING.FLAG_CAPTURE;
+        const playerFlagCandidates = aiSearch.getFlagCandidates(state);
         
         // Безопасность нашего флага (ОЧЕНЬ ВАЖНО)
         score += this.evaluateFlagSafety(aiFlag, state) * 80;
         
         // Уязвимость вражеского флага
-        score -= this.evaluateFlagSafety(playerFlag, state) * 40;
+        for (const candidate of playerFlagCandidates) {
+            score -= candidate.probability
+                * this.evaluateFlagSafety(candidate.piece, state)
+                * 40;
+        }
         
         // Жёсткий штраф: флаг в радиусе 1 от РАСКРЫТОЙ вражеской фигуры = гарантированная потеря.
         // Любая раскрытая фигура игрока в соседней клетке может взять флаг следующим ходом.
@@ -1973,6 +1990,13 @@ const aiEngine = {
     },
     
     getPossibleMoves(piece, gameState) {
+        if (!piece
+            || piece.removed
+            || piece.immobilized
+            || (piece.type === FLAG
+                && piece.revealed)) {
+            return [];
+        }
         const moves = [];
         
         for (const [dRow, dCol] of GAME_CONFIG.DIRECTIONS) {
@@ -2000,8 +2024,26 @@ const aiEngine = {
     },
     
     resolveBattle(type1, type2) {
-        if (type1 === type2) return 'draw';
-        return GAME_CONFIG.WIN_CONDITIONS[type1] === type2 ? 'win' : 'lose';
+        if (!type1
+            || !type2) {
+            return 'unknown';
+        }
+        if (type2 === FLAG) {
+            return 'win';
+        }
+        if (type1 === FLAG) {
+            return 'lose';
+        }
+        if (type2 === TRAP) {
+            return 'lose';
+        }
+        if (type1 === TRAP) {
+            return 'win';
+        }
+        if (type1 === type2) {
+            return 'draw';
+        }
+        return resolveBattle(type1, type2);
     },
     
     getWinningChoice(opponentType) {
@@ -2019,13 +2061,15 @@ const aiEngine = {
             for (let col = 0; col < BOARD_WIDTH; col++) {
                 const piece = state.board[row][col];
                 if (piece) {
-                    hash += `${piece.owner}-${piece.type}-${piece.pieceType || 'x'}`;
+                    hash += `${piece.id}-${piece.owner}-${piece.type}-${piece.pieceType || 'x'}-${piece.revealed ? 1 : 0}-${piece.immobilized ? 1 : 0}-${piece._searchHypothesis ? 1 : 0}`;
                 } else {
                     hash += '0';
                 }
                 hash += ',';
             }
         }
+        hash += `|clock:${state.movesWithoutCapture || 0}`;
+        hash += `|outcome:${state.searchOutcome ? state.searchOutcome.outcome : 'none'}`;
         return hash;
     },
     
@@ -2141,56 +2185,25 @@ const aiEngine = {
         return moves;
     },
     
-    makeVirtualMove(state, move) {
-        const newState = JSON.parse(JSON.stringify(state));
-        
-        newState.board = [];
-        for (let row = 0; row < BOARD_HEIGHT; row++) {
-            newState.board[row] = [];
-            for (let col = 0; col < BOARD_WIDTH; col++) {
-                newState.board[row][col] = null;
-            }
+    getVirtualMoveOutcomes(state, move, options = {}) {
+        return aiSearch.getMoveOutcomes(state, move, options);
+    },
+
+    evaluateVirtualMove(state, move, evaluator, options = {}) {
+        return aiSearch.evaluateMoveOutcomes(
+            state,
+            move,
+            evaluator,
+            options
+        );
+    },
+
+    makeVirtualMove(state, move, options = {}) {
+        const outcomes = this.getVirtualMoveOutcomes(state, move, options);
+        if (outcomes.length === 0) {
+            return aiSearch.cloneSearchState(state);
         }
-        
-        [...newState.playerPieces, ...newState.aiPieces].forEach(piece => {
-            if (!piece.removed && piece.row >= 0 && piece.col >= 0) {
-                newState.board[piece.row][piece.col] = piece;
-            }
-        });
-        
-        const piece = newState.board[move.piece.row][move.piece.col];
-        if (!piece) return newState;
-        
-        const target = newState.board[move.row][move.col];
-        
-        if (target) {
-            // Не позволяем флагу атаковать в виртуальных ходах
-            if (piece.type === FLAG && target.owner !== piece.owner) {
-                return newState; // Не выполняем ход
-            }
-            
-            const result = this.resolveBattle(
-                piece.type === 'piece' ? piece.pieceType : piece.type,
-                target.type === 'piece' ? target.pieceType : target.type
-            );
-            
-            if (result === 'win') {
-                this.removeVirtualPiece(newState, target);
-                newState.board[piece.row][piece.col] = null;
-                piece.row = move.row;
-                piece.col = move.col;
-                newState.board[move.row][move.col] = piece;
-            } else if (result === 'lose') {
-                this.removeVirtualPiece(newState, piece);
-            }
-        } else {
-            newState.board[piece.row][piece.col] = null;
-            piece.row = move.row;
-            piece.col = move.col;
-            newState.board[move.row][move.col] = piece;
-        }
-        
-        return newState;
+        return outcomes[0].state;
     },
     
     removeVirtualPiece(state, piece) {
@@ -2204,9 +2217,7 @@ const aiEngine = {
     },
     
     isGameOver(state) {
-        const playerFlag = state.playerPieces.find(p => p.type === FLAG && !p.removed);
-        const aiFlag = state.aiPieces.find(p => p.type === FLAG && !p.removed);
-        return !playerFlag || !aiFlag;
+        return aiSearch.getTerminalOutcome(state) !== null;
     },
     
     evaluateFlagSafety(flag, state) {

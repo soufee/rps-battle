@@ -434,6 +434,35 @@ const orlenokBot = (() => {
         return pTrap > 1 ? 1 : pTrap;
     }
 
+    function searchDistribution(piece) {
+        const base = beliefOf(piece.id);
+        const distribution = {
+            rock: base.rock || 0,
+            paper: base.paper || 0,
+            scissors: base.scissors || 0,
+            flag: base.flag || 0,
+            trap: base.trap || 0
+        };
+        const motive = scratch.motives
+            ? scratch.motives.get(piece.id)
+            : null;
+        if (motive) {
+            distribution.flag *= motive.flagMul;
+            distribution.trap *= motive.trapMul;
+        }
+        let sum = 0;
+        for (const type of ['rock', 'paper', 'scissors', 'flag', 'trap']) {
+            sum += distribution[type];
+        }
+        if (sum <= 0) {
+            return { ...UNIFORM_BELIEF };
+        }
+        for (const type of ['rock', 'paper', 'scissors', 'flag', 'trap']) {
+            distribution[type] /= sum;
+        }
+        return distribution;
+    }
+
     /**
      * Top-N enemy pieces by adjusted P(flag). Routes through the Bayesian model
      * and layers our motive nudges on top.
@@ -545,147 +574,8 @@ const orlenokBot = (() => {
         return ev;
     }
 
-    // =====================================================================
-    //  LIGHTWEIGHT STATE CLONE + DETERMINISTIC TRANSITIONS
-    //  Used by the deep search. We clone only the fields the engine needs and
-    //  rebuild the board so mutation never touches the live game state.
-    // =====================================================================
-
-    function clonePiece(p) {
-        return {
-            id: p.id,
-            type: p.type,
-            pieceType: p.pieceType,
-            owner: p.owner,
-            row: p.row,
-            col: p.col,
-            revealed: p.revealed,
-            immobilized: p.immobilized,
-            removed: p.removed
-        };
-    }
-
-    function cloneState(gs) {
-        const aiPieces = [];
-        const playerPieces = [];
-        const board = [];
-        for (let r = 0; r < BOARD_HEIGHT; r++) {
-            board.push(new Array(BOARD_WIDTH).fill(null));
-        }
-        const src1 = gs.aiPieces || [];
-        for (let i = 0; i < src1.length; i++) {
-            const c = clonePiece(src1[i]);
-            aiPieces.push(c);
-            if (!c.removed && c.row >= 0) {
-                board[c.row][c.col] = c;
-            }
-        }
-        const src2 = gs.playerPieces || [];
-        for (let i = 0; i < src2.length; i++) {
-            const c = clonePiece(src2[i]);
-            playerPieces.push(c);
-            if (!c.removed && c.row >= 0) {
-                board[c.row][c.col] = c;
-            }
-        }
-        return { board, aiPieces, playerPieces };
-    }
-
-    function removeFromArray(arr, piece) {
-        const idx = arr.indexOf(piece);
-        if (idx > -1) {
-            arr.splice(idx, 1);
-        }
-    }
-
-    /**
-     * Apply a deterministic move on a cloned state. The caller guarantees the
-     * move is either quiet or a capture with a known outcome (revealed target
-     * we beat, or a revealed flag). Combat against unknown pieces is never
-     * routed here — it lives in the root chance layer.
-     */
-    function applyDeterministic(state, piece, row, col) {
-        const target = state.board[row][col];
-        state.board[piece.row][piece.col] = null;
-        if (target) {
-            const arr = target.owner === COMPUTER ? state.aiPieces : state.playerPieces;
-            removeFromArray(arr, target);
-            piece.revealed = true;
-        }
-        piece.row = row;
-        piece.col = col;
-        state.board[row][col] = piece;
-    }
-
     function isTerminal(state) {
-        const myFlag = state.aiPieces.find(p => p.type === FLAG && !p.removed);
-        const enemyFlag = state.playerPieces.find(p => p.type === FLAG && !p.removed);
-        return !myFlag || !enemyFlag;
-    }
-
-    /**
-     * Generate deterministic edges for `owner`: quiet steps for any mobile
-     * piece, captures of a revealed enemy we beat, and capture of a revealed
-     * enemy flag. Attacks on pieces of unknown type are deliberately omitted.
-     */
-    function genDeterministicMoves(state, owner) {
-        const pieces = owner === COMPUTER ? state.aiPieces : state.playerPieces;
-        const moves = [];
-        for (let i = 0; i < pieces.length; i++) {
-            const piece = pieces[i];
-            if (!piece || piece.removed || piece.immobilized || piece.row < 0) {
-                continue;
-            }
-            const attackerType = knownType(piece);
-            for (let d = 0; d < GAME_CONFIG.DIRECTIONS.length; d++) {
-                const dir = GAME_CONFIG.DIRECTIONS[d];
-                const nr = piece.row + dir[0];
-                const nc = piece.col + dir[1];
-                if (nr < 0 || nr >= BOARD_HEIGHT || nc < 0 || nc >= BOARD_WIDTH) {
-                    continue;
-                }
-                const target = state.board[nr][nc];
-                if (!target) {
-                    moves.push({ piece, row: nr, col: nc, capture: false });
-                    continue;
-                }
-                if (target.owner === owner) {
-                    continue;
-                }
-                if (piece.type === FLAG) {
-                    continue;
-                }
-                // Paranoid asymmetry: assume the opponent can take our flag any
-                // time it is reachable, even from a hidden piece. We only chase
-                // THEIR flag once it is actually revealed.
-                if (owner === PLAYER && target.owner === COMPUTER && target.type === FLAG) {
-                    moves.push({ piece, row: nr, col: nc, capture: true });
-                    continue;
-                }
-                const tType = knownType(target);
-                if (tType === null) {
-                    continue;
-                }
-                if (tType === FLAG) {
-                    moves.push({ piece, row: nr, col: nc, capture: true });
-                    continue;
-                }
-                if (tType === TRAP) {
-                    continue;
-                }
-                if (piece.type === TRAP) {
-                    moves.push({ piece, row: nr, col: nc, capture: true });
-                    continue;
-                }
-                if (attackerType === null) {
-                    continue;
-                }
-                if (battleResult(attackerType, tType) === 'win') {
-                    moves.push({ piece, row: nr, col: nc, capture: true });
-                }
-            }
-        }
-        return moves;
+        return aiSearch.getTerminalOutcome(state) !== null;
     }
 
     // =====================================================================
@@ -693,14 +583,18 @@ const orlenokBot = (() => {
     // =====================================================================
 
     function evaluate(state) {
+        const terminal = aiSearch.getTerminalOutcome(state);
+        if (terminal) {
+            if (terminal.outcome === 'win') {
+                return WIN_SCORE;
+            }
+            if (terminal.outcome === 'lose') {
+                return -WIN_SCORE;
+            }
+            return 0;
+        }
         const myFlag = state.aiPieces.find(p => p.type === FLAG && !p.removed);
-        if (!myFlag) {
-            return -WIN_SCORE;
-        }
         const enemyFlag = state.playerPieces.find(p => p.type === FLAG && !p.removed);
-        if (!enemyFlag) {
-            return WIN_SCORE;
-        }
         let score = 0;
         score += scoreMaterial(state);
         score += scoreFlagSafety(state, myFlag);
@@ -827,7 +721,8 @@ const orlenokBot = (() => {
             }
         }
 
-        if (enemyFlag.revealed) {
+        if (enemyFlag
+            && enemyFlag.revealed) {
             for (let i = 0; i < attackers.length; i++) {
                 s += (6 - Math.min(6, chebP(attackers[i], enemyFlag))) * 55;
             }
@@ -1045,8 +940,19 @@ const orlenokBot = (() => {
         }
     }
 
+    function genFogSafeMoves(state, owner) {
+        const moves = aiSearch.generateSearchMoves(state, owner);
+        return moves.map(move => ({
+            ...move,
+            capture: !!(
+                state.board[move.row]
+                && state.board[move.row][move.col]
+            )
+        }));
+    }
+
     // =====================================================================
-    //  QUIESCENCE + ALPHA-BETA over deterministic transitions
+    //  QUIESCENCE + EXPECTIMINIMAX over fog-safe transitions
     // =====================================================================
 
     function quiescence(state, alpha, beta, maximizing, qdepth) {
@@ -1070,7 +976,7 @@ const orlenokBot = (() => {
             }
         }
         const owner = maximizing ? COMPUTER : PLAYER;
-        const all = genDeterministicMoves(state, owner);
+        const all = genFogSafeMoves(state, owner);
         const captures = [];
         for (let i = 0; i < all.length; i++) {
             if (all[i].capture) {
@@ -1086,14 +992,12 @@ const orlenokBot = (() => {
             if (Date.now() > scratch.deadline) {
                 break;
             }
-            const child = cloneState(state);
-            const piece = (owner === COMPUTER ? child.aiPieces : child.playerPieces)
-                .find(p => p.id === ordered[i].piece.id);
-            if (!piece) {
-                continue;
-            }
-            applyDeterministic(child, piece, ordered[i].row, ordered[i].col);
-            const v = quiescence(child, alpha, beta, !maximizing, qdepth - 1);
+            const v = expectedQuiescenceValue(
+                state,
+                ordered[i],
+                !maximizing,
+                qdepth - 1
+            );
             if (maximizing) {
                 if (v >= beta) {
                     return beta;
@@ -1113,6 +1017,27 @@ const orlenokBot = (() => {
         return maximizing ? alpha : beta;
     }
 
+    function expectedQuiescenceValue(state, move, maximizing, qdepth) {
+        const outcomes = aiSearch.getMoveOutcomes(state, move, {
+            getDistribution: searchDistribution
+        });
+        if (outcomes.length === 0) {
+            return evaluate(state);
+        }
+        let value = 0;
+        for (const outcome of outcomes) {
+            value += outcome.probability
+                * quiescence(
+                    outcome.state,
+                    -Infinity,
+                    Infinity,
+                    maximizing,
+                    qdepth
+                );
+        }
+        return value;
+    }
+
     function alphaBeta(state, depth, alpha, beta, maximizing) {
         scratch.nodes++;
         if (Date.now() > scratch.deadline || isTerminal(state)) {
@@ -1122,7 +1047,7 @@ const orlenokBot = (() => {
             return quiescence(state, alpha, beta, maximizing, QUIESCENCE_DEPTH);
         }
         const owner = maximizing ? COMPUTER : PLAYER;
-        let moves = genDeterministicMoves(state, owner);
+        let moves = genFogSafeMoves(state, owner);
         if (moves.length === 0) {
             return evaluate(state);
         }
@@ -1136,14 +1061,12 @@ const orlenokBot = (() => {
             if (Date.now() > scratch.deadline) {
                 break;
             }
-            const child = cloneState(state);
-            const piece = (owner === COMPUTER ? child.aiPieces : child.playerPieces)
-                .find(p => p.id === moves[i].piece.id);
-            if (!piece) {
-                continue;
-            }
-            applyDeterministic(child, piece, moves[i].row, moves[i].col);
-            const v = alphaBeta(child, depth - 1, alpha, beta, !maximizing);
+            const v = expectedAlphaBetaValue(
+                state,
+                moves[i],
+                depth - 1,
+                !maximizing
+            );
             if (maximizing) {
                 if (v > best) {
                     best = v;
@@ -1167,6 +1090,27 @@ const orlenokBot = (() => {
         return best;
     }
 
+    function expectedAlphaBetaValue(state, move, depth, maximizing) {
+        const outcomes = aiSearch.getMoveOutcomes(state, move, {
+            getDistribution: searchDistribution
+        });
+        if (outcomes.length === 0) {
+            return evaluate(state);
+        }
+        let value = 0;
+        for (const outcome of outcomes) {
+            value += outcome.probability
+                * alphaBeta(
+                    outcome.state,
+                    depth,
+                    -Infinity,
+                    Infinity,
+                    maximizing
+                );
+        }
+        return value;
+    }
+
     // =====================================================================
     //  ROOT EXPECTIMAX
     //  Every legal move is scored. Quiet / revealed lines descend into the
@@ -1174,91 +1118,25 @@ const orlenokBot = (() => {
     //  a Bayesian chance node so the gamble is judged by its true expectation.
     // =====================================================================
 
-    function rootValueQuietOrRevealed(gs, depth, move) {
-        const child = cloneState(gs);
-        const piece = child.aiPieces.find(p => p.id === move.piece.id);
-        if (!piece) {
+    function rootValueFogSafe(gs, depth, move) {
+        const outcomes = aiSearch.getMoveOutcomes(gs, move, {
+            getDistribution: searchDistribution
+        });
+        if (outcomes.length === 0) {
             return -Infinity;
         }
-        const target = child.board[move.row][move.col];
-        if (target && target.owner === PLAYER) {
-            const tType = knownType(target);
-            if (tType === FLAG) {
-                return WIN_SCORE;
-            }
+        let value = 0;
+        for (const outcome of outcomes) {
+            value += outcome.probability
+                * alphaBeta(
+                    outcome.state,
+                    depth - 1,
+                    -Infinity,
+                    Infinity,
+                    false
+                );
         }
-        applyDeterministic(child, piece, move.row, move.col);
-        return alphaBeta(child, depth - 1, -Infinity, Infinity, false);
-    }
-
-    function rootValueHiddenAttack(gs, depth, move) {
-        const attacker = move.piece;
-        const target = gs.playerPieces.find(p =>
-            p && p.row === move.row && p.col === move.col && !p.removed);
-        if (!target) {
-            return -Infinity;
-        }
-        const belief = beliefOf(target.id);
-        const pFlag = belief.flag || 0;
-        const pTrap = belief.trap || 0;
-        let ev = pFlag * WIN_SCORE;
-
-        // Trap branch: our attacker dies, the trap is immobilised.
-        if (pTrap > 0) {
-            const trapState = cloneState(gs);
-            const me = trapState.aiPieces.find(p => p.id === attacker.id);
-            const tg = trapState.playerPieces.find(p => p.id === target.id);
-            if (me && tg) {
-                removeFromArray(trapState.aiPieces, me);
-                trapState.board[me.row][me.col] = null;
-                tg.immobilized = true;
-                tg.revealed = true;
-                ev += pTrap * evaluate(trapState);
-            }
-        }
-
-        if (attacker.type === 'piece' && attacker.pieceType) {
-            const beats = beatsOf(attacker.pieceType);
-            const beatenBy = beatenByOf(attacker.pieceType);
-            const pWin = belief[beats] || 0;
-            const pLose = belief[beatenBy] || 0;
-            const pDraw = belief[attacker.pieceType] || 0;
-
-            if (pWin > 0) {
-                const winState = cloneState(gs);
-                const me = winState.aiPieces.find(p => p.id === attacker.id);
-                const tg = winState.board[move.row][move.col];
-                if (me && tg) {
-                    applyDeterministic(winState, me, move.row, move.col);
-                }
-                ev += pWin * alphaBeta(winState, depth - 1, -Infinity, Infinity, false);
-            }
-            if (pLose > 0) {
-                const loseState = cloneState(gs);
-                const me = loseState.aiPieces.find(p => p.id === attacker.id);
-                if (me) {
-                    removeFromArray(loseState.aiPieces, me);
-                    loseState.board[me.row][me.col] = null;
-                }
-                ev += pLose * alphaBeta(loseState, depth - 1, -Infinity, Infinity, false);
-            }
-            if (pDraw > 0) {
-                // A draw reveals both pieces and re-rolls; positions unchanged.
-                // Treat it as a mildly negative tempo event with a follow-up
-                // evaluation that accounts for the lost hidden value.
-                const drawState = cloneState(gs);
-                const me = drawState.aiPieces.find(p => p.id === attacker.id);
-                const tg = drawState.playerPieces.find(p => p.id === target.id);
-                if (me) {
-                    me.revealed = true;
-                }
-                if (tg) {
-                    tg.revealed = true;
-                }
-                ev += pDraw * (evaluate(drawState) - 60);
-            }
-        }
-        return ev;
+        return value;
     }
 
     function searchBestMove(gs, available) {
@@ -1307,16 +1185,7 @@ const orlenokBot = (() => {
                 break;
             }
             const move = ordered[i];
-            const target = gs.board[move.row][move.col];
-            const hiddenAttack = target
-                && target.owner === PLAYER
-                && knownType(target) === null;
-            let value;
-            if (hiddenAttack) {
-                value = rootValueHiddenAttack(gs, depth, move);
-            } else {
-                value = rootValueQuietOrRevealed(gs, depth, move);
-            }
+            let value = rootValueFogSafe(gs, depth, move);
             value += rootShaping(gs, move, myFlag);
             if (value > bestScore) {
                 bestScore = value;

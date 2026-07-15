@@ -1,4 +1,5 @@
 import { BOARD_HEIGHT, BOARD_WIDTH, FLAG, TRAP, PLAYER, COMPUTER } from '../game-config.js';
+import aiSearch from './ai-search.js';
 
 /**
  * Экспертный Ёжик (moveLevel3)
@@ -785,9 +786,15 @@ const aiExpert = {
             if (Date.now() >= deadline) {
                 break;
             }
-            const newState = aiEngine.makeVirtualMove(state, move);
             const noisy = this._isNoisyMove(state, move);
-            const score = this._alphaBeta(newState, depth - 1, alpha, beta, false, deadline, noisy);
+            const score = this._expectedAlphaBetaMove(
+                state,
+                move,
+                depth - 1,
+                false,
+                deadline,
+                noisy
+            );
             if (score > bestScore) {
                 bestScore = score;
                 bestMove = move;
@@ -827,9 +834,15 @@ const aiExpert = {
                 if (Date.now() >= deadline) {
                     break;
                 }
-                const newState = aiEngine.makeVirtualMove(state, move);
                 const noisy = this._isNoisyMove(state, move);
-                const val = this._alphaBeta(newState, depth - 1, alpha, beta, false, deadline, noisy);
+                const val = this._expectedAlphaBetaMove(
+                    state,
+                    move,
+                    depth - 1,
+                    false,
+                    deadline,
+                    noisy
+                );
                 if (val > best) {
                     best = val;
                 }
@@ -848,9 +861,15 @@ const aiExpert = {
             if (Date.now() >= deadline) {
                 break;
             }
-            const newState = aiEngine.makeVirtualMove(state, move);
             const noisy = this._isNoisyMove(state, move);
-            const val = this._alphaBeta(newState, depth - 1, alpha, beta, true, deadline, noisy);
+            const val = this._expectedAlphaBetaMove(
+                state,
+                move,
+                depth - 1,
+                true,
+                deadline,
+                noisy
+            );
             if (val < best) {
                 best = val;
             }
@@ -862,6 +881,27 @@ const aiExpert = {
             }
         }
         return best;
+    },
+
+    _expectedAlphaBetaMove(state, move, depth, isMax, deadline, noisy) {
+        const outcomes = aiSearch.getMoveOutcomes(state, move);
+        if (outcomes.length === 0) {
+            return this.evaluateExpertPosition(state);
+        }
+        let expected = 0;
+        for (const outcome of outcomes) {
+            const value = this._alphaBeta(
+                outcome.state,
+                depth,
+                -Infinity,
+                Infinity,
+                isMax,
+                deadline,
+                noisy
+            );
+            expected += outcome.probability * value;
+        }
+        return expected;
     },
     
     _quiescence(state, remaining, alpha, beta, isMax, deadline) {
@@ -888,8 +928,13 @@ const aiExpert = {
                 if (Date.now() >= deadline) {
                     break;
                 }
-                const newState = aiEngine.makeVirtualMove(state, move);
-                const val = this._quiescence(newState, remaining - 1, alpha, beta, false, deadline);
+                const val = this._expectedQuiescenceMove(
+                    state,
+                    move,
+                    remaining - 1,
+                    false,
+                    deadline
+                );
                 if (val > best) {
                     best = val;
                 }
@@ -914,8 +959,13 @@ const aiExpert = {
             if (Date.now() >= deadline) {
                 break;
             }
-            const newState = aiEngine.makeVirtualMove(state, move);
-            const val = this._quiescence(newState, remaining - 1, alpha, beta, true, deadline);
+            const val = this._expectedQuiescenceMove(
+                state,
+                move,
+                remaining - 1,
+                true,
+                deadline
+            );
             if (val < best) {
                 best = val;
             }
@@ -927,6 +977,26 @@ const aiExpert = {
             }
         }
         return best;
+    },
+
+    _expectedQuiescenceMove(state, move, remaining, isMax, deadline) {
+        const outcomes = aiSearch.getMoveOutcomes(state, move);
+        if (outcomes.length === 0) {
+            return this.evaluateExpertPosition(state);
+        }
+        let expected = 0;
+        for (const outcome of outcomes) {
+            const value = this._quiescence(
+                outcome.state,
+                remaining,
+                -Infinity,
+                Infinity,
+                isMax,
+                deadline
+            );
+            expected += outcome.probability * value;
+        }
+        return expected;
     },
     
     // ==========================================================================
@@ -1248,7 +1318,15 @@ const aiExpert = {
                     continue;
                 }
                 
-                const newState = aiEngine.makeVirtualMove(gameState, { piece, row: move.row, col: move.col });
+                const outcomes = aiSearch.getMoveOutcomes(gameState, {
+                    piece,
+                    row: move.row,
+                    col: move.col
+                });
+                if (outcomes.length === 0) {
+                    continue;
+                }
+                const newState = outcomes[0].state;
                 const newPiece = newState.aiPieces.find(p => p.id === piece.id && !p.removed);
                 if (!newPiece) {
                     continue;

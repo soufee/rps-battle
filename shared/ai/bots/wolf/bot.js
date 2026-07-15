@@ -75,6 +75,16 @@ const wolfBot = (() => {
     //  PSYCHOLOGICAL EVALUATION ("FIST" TACTICS)
     // =========================================================================
     function evaluatePosition(state, depth) {
+        const terminal = aiSearch.getTerminalOutcome(state);
+        if (terminal) {
+            if (terminal.outcome === 'win') {
+                return 1000000;
+            }
+            if (terminal.outcome === 'lose') {
+                return -1000000;
+            }
+            return 0;
+        }
         let score = 0;
         
         const myFlag = aiFlag(state);
@@ -203,7 +213,7 @@ const wolfBot = (() => {
                 if (chebyshev(ally, enemy) === 1) { 
                     if (enemy.revealed && enemy.type === 'piece') {
                         const res = aiEngine.resolveBattle(ally.pieceType, enemy.pieceType);
-                        if (res === 'loss') {
+                        if (res === 'lose') {
                             score -= 900; 
                         } else if (res === 'win') {
                             // Штраф за "стояние рядом" без убийства. 
@@ -232,7 +242,7 @@ const wolfBot = (() => {
                 if (target.revealed && target.type === 'piece' && m.piece.type === 'piece') {
                     const res = aiEngine.resolveBattle(m.piece.pieceType, target.pieceType);
                     if (res === 'win') score += 2000;
-                    if (res === 'loss') score -= 3000;
+                    if (res === 'lose') score -= 3000;
                 }
             }
             if (owner === COMPUTER) score += m.row * 10;
@@ -261,18 +271,23 @@ const wolfBot = (() => {
 
         for (const move of moves) {
             if (Date.now() > deadline) break;
-            const nextState = aiEngine.makeVirtualMove(state, move);
-            const child = minimax(nextState, depth - 1, alpha, beta, !isMax, deadline);
+            const childScore = expectedSearchScore(
+                state,
+                move,
+                depth - 1,
+                !isMax,
+                deadline
+            );
             
             if (isMax) {
-                if (child.score > bestScore) {
-                    bestScore = child.score;
+                if (childScore > bestScore) {
+                    bestScore = childScore;
                     bestMove = move;
                 }
                 alpha = Math.max(alpha, bestScore);
             } else {
-                if (child.score < bestScore) {
-                    bestScore = child.score;
+                if (childScore < bestScore) {
+                    bestScore = childScore;
                     bestMove = move;
                 }
                 beta = Math.min(beta, bestScore);
@@ -282,6 +297,26 @@ const wolfBot = (() => {
         }
 
         return { score: bestScore, move: bestMove };
+    }
+
+    function expectedSearchScore(state, move, depth, isMax, deadline) {
+        const outcomes = aiSearch.getMoveOutcomes(state, move);
+        if (outcomes.length === 0) {
+            return evaluatePosition(state, depth);
+        }
+        let score = 0;
+        for (const outcome of outcomes) {
+            const child = minimax(
+                outcome.state,
+                depth,
+                -Infinity,
+                Infinity,
+                isMax,
+                deadline
+            );
+            score += outcome.probability * child.score;
+        }
+        return score;
     }
 
     function pickMove(state) {
@@ -309,11 +344,16 @@ const wolfBot = (() => {
 
             for (const move of moves) {
                 if (Date.now() > deadline) break;
-                const nextState = aiEngine.makeVirtualMove(state, move);
-                const child = minimax(nextState, depth - 1, alpha, beta, false, deadline);
+                const childScore = expectedSearchScore(
+                    state,
+                    move,
+                    depth - 1,
+                    false,
+                    deadline
+                );
                 
-                if (child.score > dBestScore) {
-                    dBestScore = child.score;
+                if (childScore > dBestScore) {
+                    dBestScore = childScore;
                     dBestMove = move;
                 }
                 alpha = Math.max(alpha, dBestScore);

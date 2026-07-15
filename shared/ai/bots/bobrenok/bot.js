@@ -882,14 +882,34 @@ const bobrenokBot = {
     },
 
     _estimateEnemyReplyDanger(gameState, move, strategicContext) {
-        if (typeof aiEngine === 'undefined'
-            || !aiEngine
-            || typeof aiEngine.makeVirtualMove !== 'function'
-            || typeof aiEngine.getAllPossibleMoves !== 'function') {
+        if (typeof aiSearch === 'undefined'
+            || !aiSearch
+            || typeof aiSearch.getMoveOutcomes !== 'function') {
             return 0;
         }
+        const outcomes = aiSearch.getMoveOutcomes(gameState, move);
+        if (outcomes.length === 0) {
+            return this._evaluateFlagDangerState(gameState);
+        }
+        let expectedDanger = 0;
+        let worstDanger = 0;
+        for (const outcome of outcomes) {
+            const danger = this._estimateEnemyReplyDangerForState(
+                outcome.state,
+                strategicContext
+            );
+            expectedDanger += outcome.probability * danger;
+            worstDanger = Math.max(worstDanger, danger);
+        }
+        return expectedDanger * 0.7
+            + worstDanger * 0.3;
+    },
 
-        const afterOurMove = aiEngine.makeVirtualMove(gameState, move);
+    _estimateEnemyReplyDangerForState(afterOurMove, strategicContext) {
+        const terminal = aiSearch.getTerminalOutcome(afterOurMove);
+        if (terminal) {
+            return terminal.outcome === 'lose' ? 1000000 : 0;
+        }
         const myFlag = afterOurMove.aiPieces.find(piece => piece.type === 'flag' && !piece.removed);
         if (!myFlag) {
             return 1000000;
@@ -913,8 +933,10 @@ const bobrenokBot = {
         const sampled = rankedReplies.slice(0, Math.min(replyLimit, rankedReplies.length));
 
         for (const entry of sampled) {
-            const afterEnemy = aiEngine.makeVirtualMove(afterOurMove, entry.move);
-            const danger = this._evaluateFlagDangerState(afterEnemy);
+            const danger = this._expectedFlagDangerAfterMove(
+                afterOurMove,
+                entry.move
+            );
             if (danger > worstDanger) {
                 worstDanger = danger;
             }
@@ -924,6 +946,22 @@ const bobrenokBot = {
         }
 
         return worstDanger;
+    },
+
+    _expectedFlagDangerAfterMove(gameState, move) {
+        const outcomes = aiSearch.getMoveOutcomes(gameState, move);
+        if (outcomes.length === 0) {
+            return this._evaluateFlagDangerState(gameState);
+        }
+        let danger = 0;
+        for (const outcome of outcomes) {
+            const terminal = aiSearch.getTerminalOutcome(outcome.state);
+            const branchDanger = terminal && terminal.outcome === 'lose'
+                ? 1000000
+                : (terminal ? 0 : this._evaluateFlagDangerState(outcome.state));
+            danger += outcome.probability * branchDanger;
+        }
+        return danger;
     },
 
     _scoreEnemyReplyPriority(state, move, myFlag) {

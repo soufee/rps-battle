@@ -147,6 +147,16 @@ const leopardikBot = (() => {
      * Coordinated Multi-factor Evaluation Function
      */
     function evaluatePosition(state, depth) {
+        const terminal = aiSearch.getTerminalOutcome(state);
+        if (terminal) {
+            if (terminal.outcome === 'win') {
+                return 1000000;
+            }
+            if (terminal.outcome === 'lose') {
+                return -1000000;
+            }
+            return 0;
+        }
         let score = 0;
 
         const myFlag = getAIFlag(state);
@@ -388,28 +398,57 @@ const leopardikBot = (() => {
         let bestMove = moves[0];
 
         for (const move of moves) {
-            if (Date.now() > deadline) break;
-            const nextState = aiEngine.makeVirtualMove(state, move);
-            const child = minimax(nextState, depth - 1, alpha, beta, !isMax, deadline);
+            if (Date.now() > deadline) {
+                break;
+            }
+            const childScore = expectedSearchScore(
+                state,
+                move,
+                depth - 1,
+                !isMax,
+                deadline
+            );
 
             if (isMax) {
-                if (child.score > bestScore) {
-                    bestScore = child.score;
+                if (childScore > bestScore) {
+                    bestScore = childScore;
                     bestMove = move;
                 }
                 alpha = Math.max(alpha, bestScore);
             } else {
-                if (child.score < bestScore) {
-                    bestScore = child.score;
+                if (childScore < bestScore) {
+                    bestScore = childScore;
                     bestMove = move;
                 }
                 beta = Math.min(beta, bestScore);
             }
 
-            if (beta <= alpha) break;
+            if (beta <= alpha) {
+                break;
+            }
         }
 
         return { score: bestScore, move: bestMove };
+    }
+
+    function expectedSearchScore(state, move, depth, isMax, deadline) {
+        const outcomes = aiSearch.getMoveOutcomes(state, move);
+        if (outcomes.length === 0) {
+            return evaluatePosition(state, depth);
+        }
+        let score = 0;
+        for (const outcome of outcomes) {
+            const child = minimax(
+                outcome.state,
+                depth,
+                -Infinity,
+                Infinity,
+                isMax,
+                deadline
+            );
+            score += outcome.probability * child.score;
+        }
+        return score;
     }
 
     /**
@@ -448,12 +487,19 @@ const leopardikBot = (() => {
             let beta = Infinity;
 
             for (const move of moves) {
-                if (Date.now() > deadline) break;
-                const nextState = aiEngine.makeVirtualMove(state, move);
-                const child = minimax(nextState, depth - 1, alpha, beta, false, deadline);
+                if (Date.now() > deadline) {
+                    break;
+                }
+                const childScore = expectedSearchScore(
+                    state,
+                    move,
+                    depth - 1,
+                    false,
+                    deadline
+                );
 
-                if (child.score > dBestScore) {
-                    dBestScore = child.score;
+                if (childScore > dBestScore) {
+                    dBestScore = childScore;
                     dBestMove = move;
                 }
                 alpha = Math.max(alpha, dBestScore);

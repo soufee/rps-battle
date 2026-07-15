@@ -434,21 +434,25 @@ const akulenokBot = (() => {
     // =====================================================================
 
     function evaluatePosition(gs) {
+        const terminal = aiSearch.getTerminalOutcome(gs);
+        if (terminal) {
+            if (terminal.outcome === 'win') {
+                return SCORE_FLAG;
+            }
+            if (terminal.outcome === 'lose') {
+                return -SCORE_FLAG;
+            }
+            return 0;
+        }
         const myFlag = getMyFlag(gs);
         const enemyFlag = getEnemyFlag(gs);
-        if (!myFlag) {
-            return -SCORE_FLAG;
-        }
-        if (!enemyFlag) {
-            return SCORE_FLAG;
-        }
 
         let score = 0;
 
         const myPieces = (gs.aiPieces || []).filter(p => !p.removed && p.row >= 0);
         const enemyPieces = (gs.playerPieces || []).filter(p => !p.removed && p.row >= 0);
 
-        score += scoreMaterial(myPieces, enemyPieces);
+        score += scoreMaterial(gs, myPieces, enemyPieces);
         score += scoreFlagSafety(gs, myFlag, myPieces);
         score += scoreEnemyFlagPressure(gs, enemyFlag);
         score += scoreCoordination(myPieces);
@@ -457,7 +461,7 @@ const akulenokBot = (() => {
         return score;
     }
 
-    function scoreMaterial(myPieces, enemyPieces) {
+    function scoreMaterial(gs, myPieces, enemyPieces) {
         let s = 0;
         for (let i = 0; i < myPieces.length; i++) {
             const p = myPieces[i];
@@ -471,6 +475,16 @@ const akulenokBot = (() => {
         }
         for (let i = 0; i < enemyPieces.length; i++) {
             const p = enemyPieces[i];
+            if (!p.revealed) {
+                const distribution = aiSearch.getPieceDistribution(gs, p);
+                const rpsProbability = distribution.rock
+                    + distribution.paper
+                    + distribution.scissors;
+                s -= distribution.flag * SCORE_OPP_FLAG;
+                s -= distribution.trap * SCORE_OPP_TRAP;
+                s -= rpsProbability * SCORE_OPP_PIECE_HIDDEN;
+                continue;
+            }
             if (p.type === FLAG) {
                 s -= SCORE_OPP_FLAG;
             } else if (p.type === TRAP) {
@@ -560,7 +574,8 @@ const akulenokBot = (() => {
         let s = 0;
         const candidates = getFlagCandidates(gs, 2);
 
-        if (enemyFlag.revealed) {
+        if (enemyFlag
+            && enemyFlag.revealed) {
             const myAttackers = (gs.aiPieces || []).filter(p =>
                 !p.removed && p.row >= 0 && !p.immobilized && p.type === 'piece'
             );
@@ -845,23 +860,7 @@ const akulenokBot = (() => {
     }
 
     function hashState(gs) {
-        let h = '';
-        for (let r = 0; r < BOARD_HEIGHT; r++) {
-            for (let c = 0; c < BOARD_WIDTH; c++) {
-                const p = gs.board[r][c];
-                if (p) {
-                    const code = (p.owner === COMPUTER ? 'C' : 'P')
-                               + (p.type === 'piece'
-                                  ? (p.revealed ? p.pieceType[0] : 'h')
-                                  : p.type[0]);
-                    h += code;
-                } else {
-                    h += '.';
-                }
-            }
-            h += '|';
-        }
-        return h;
+        return aiEngine.getStateHash(gs);
     }
 
     function quiescence(gs, alpha, beta, isMax, depth, deadline) {
@@ -908,8 +907,13 @@ const akulenokBot = (() => {
             if (Date.now() > deadline) {
                 break;
             }
-            const next = aiEngine.makeVirtualMove(gs, ordered[i]);
-            const v = quiescence(next, alpha, beta, !isMax, depth - 1, deadline);
+            const v = expectedQuiescenceScore(
+                gs,
+                ordered[i],
+                !isMax,
+                depth - 1,
+                deadline
+            );
             if (isMax) {
                 if (v >= beta) {
                     return beta;
@@ -929,6 +933,26 @@ const akulenokBot = (() => {
         return isMax ? alpha : beta;
     }
 
+    function expectedQuiescenceScore(gs, move, isMax, depth, deadline) {
+        const outcomes = aiSearch.getMoveOutcomes(gs, move);
+        if (outcomes.length === 0) {
+            return evaluatePosition(gs);
+        }
+        let score = 0;
+        for (const outcome of outcomes) {
+            const value = quiescence(
+                outcome.state,
+                -Infinity,
+                Infinity,
+                isMax,
+                depth,
+                deadline
+            );
+            score += outcome.probability * value;
+        }
+        return score;
+    }
+
     function alphaBeta(gs, depth, alpha, beta, isMax, deadline, pvMove) {
         if (Date.now() > deadline) {
             return { score: evaluatePosition(gs), move: null };
@@ -937,7 +961,7 @@ const akulenokBot = (() => {
             return { score: evaluatePosition(gs), move: null };
         }
 
-        const key = depth + '|' + (isMax ? 'X' : 'N') + '|' + hashState(gs);
+        const key = `${depth}|${isMax ? 'X' : 'N'}|${hashState(gs)}`;
         const cached = state.transposition.get(key);
         if (cached && cached.depth >= depth) {
             return { score: cached.score, move: cached.move };
@@ -969,20 +993,25 @@ const akulenokBot = (() => {
             if (Date.now() > deadline) {
                 break;
             }
-            const child = aiEngine.makeVirtualMove(gs, moves[i]);
-            const inner = alphaBeta(child, depth - 1, alpha, beta, !isMax, deadline, null);
+            const innerScore = expectedAlphaBetaScore(
+                gs,
+                moves[i],
+                depth - 1,
+                !isMax,
+                deadline
+            );
 
             if (isMax) {
-                if (inner.score > bestScore) {
-                    bestScore = inner.score;
+                if (innerScore > bestScore) {
+                    bestScore = innerScore;
                     bestMove = moves[i];
                 }
                 if (bestScore > alpha) {
                     alpha = bestScore;
                 }
             } else {
-                if (inner.score < bestScore) {
-                    bestScore = inner.score;
+                if (innerScore < bestScore) {
+                    bestScore = innerScore;
                     bestMove = moves[i];
                 }
                 if (bestScore < beta) {
@@ -997,6 +1026,27 @@ const akulenokBot = (() => {
 
         state.transposition.set(key, { score: bestScore, move: bestMove, depth: depth });
         return { score: bestScore, move: bestMove };
+    }
+
+    function expectedAlphaBetaScore(gs, move, depth, isMax, deadline) {
+        const outcomes = aiSearch.getMoveOutcomes(gs, move);
+        if (outcomes.length === 0) {
+            return evaluatePosition(gs);
+        }
+        let score = 0;
+        for (const outcome of outcomes) {
+            const child = alphaBeta(
+                outcome.state,
+                depth,
+                -Infinity,
+                Infinity,
+                isMax,
+                deadline,
+                null
+            );
+            score += outcome.probability * child.score;
+        }
+        return score;
     }
 
     function iterativeDeepening(gs) {

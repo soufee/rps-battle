@@ -959,47 +959,15 @@ const obezyankaBot = {
     },
 
     _quickLookahead(gameState, move, depth) {
-        // Улучшенный lookahead v3.4: точный makeVirtualMove + quiescence на захват флага
-        // (по IMPROVE_PROMPT: после каждого виртуального хода проверяем findFlagDefenseMoves на "ответ" соперника)
-        if (typeof aiEngine !== 'undefined' && aiEngine && typeof aiEngine.makeVirtualMove === 'function') {
-            try {
-                const after = aiEngine.makeVirtualMove(gameState, move);
-
-                // === QUIESCENCE v3.4: флаг под боем и нет защиты → мгновенная смерть (-1e6) ===
-                const myFlagAfter = after.aiPieces && after.aiPieces.find(p => p.type === 'flag' && !p.removed);
-                if (myFlagAfter) {
-                    const threatsAfter = (after.playerPieces || []).filter(p =>
-                        !p.removed && p.row >= 0 &&
-                        Math.max(Math.abs(p.row - myFlagAfter.row), Math.abs(p.col - myFlagAfter.col)) <= 1 &&
-                        p.type !== 'flag'
-                    );
-
-                    if (threatsAfter.length > 0) {
-                        // Пытаемся вызвать shared defense detector на новой позиции
-                        let hasDefense = false;
-                        if (typeof aiEngine.findFlagDefenseMoves === 'function') {
-                            const availAfter = (typeof aiEngine.getActivePieces === 'function')
-                                ? aiEngine.getActivePieces(after) : (after.aiPieces || []).filter(p => !p.removed && !p.immobilized);
-                            const defs = aiEngine.findFlagDefenseMoves(after, availAfter);
-                            hasDefense = !!(defs && defs.length > 0);
-                        }
-                        if (!hasDefense) {
-                            return -1000000; // флаг висит без защиты после нашего хода
-                        }
-                    }
-                }
-
-                // Простая проверка (backward compat)
-                if (this._opponentCanTakeOurFlag(after)) {
-                    return -9500;
-                }
-
-                // Fortress-aware оценка
-                const base = this._evaluatePosition(after, null) * 0.7;
-                // Если после хода крепость улучшилась — небольшой бонус
-                const fortDelta = this._fortressScore(after) - this._fortressScore(gameState);
-                return base + fortDelta * 0.8;
-            } catch (e) {}
+        if (typeof aiSearch !== 'undefined'
+            && aiSearch
+            && typeof aiSearch.evaluateMoveOutcomes === 'function') {
+            return aiSearch.evaluateMoveOutcomes(
+                gameState,
+                move,
+                after => this._scoreLookaheadState(gameState, after),
+                { riskAversion: 0.2 }
+            );
         }
 
         // Fallback к старой лёгкой эвристике (на случай отсутствия движка)
@@ -1016,6 +984,52 @@ const obezyankaBot = {
             bonus += (4 - Math.min(4, d)) * 18;
         }
         return bonus;
+    },
+
+    _scoreLookaheadState(before, after) {
+        const terminal = aiSearch.getTerminalOutcome(after);
+        if (terminal) {
+            if (terminal.outcome === 'win') {
+                return 1000000;
+            }
+            if (terminal.outcome === 'lose') {
+                return -1000000;
+            }
+            return 0;
+        }
+        const myFlagAfter = after.aiPieces.find(p => {
+            return p.type === 'flag'
+                && !p.removed;
+        });
+        if (!myFlagAfter) {
+            return -1000000;
+        }
+        const threatsAfter = after.playerPieces.filter(p => {
+            return !p.removed
+                && p.row >= 0
+                && Math.max(
+                    Math.abs(p.row - myFlagAfter.row),
+                    Math.abs(p.col - myFlagAfter.col)
+                ) <= 1
+                && p.type !== 'flag';
+        });
+        if (threatsAfter.length > 0
+            && typeof aiEngine.findFlagDefenseMoves === 'function') {
+            const available = aiEngine.getActivePieces(after);
+            const defenses = aiEngine.findFlagDefenseMoves(after, available);
+            if (!defenses
+                || defenses.length === 0) {
+                return -1000000;
+            }
+        }
+        if (this._opponentCanTakeOurFlag(after)) {
+            return -9500;
+        }
+        const base = aiEngine.evaluatePositionV2(after) * 0.1;
+        const fortDelta = this._fortressScore(after)
+            - this._fortressScore(before);
+        return base
+            + fortDelta * 0.8;
     },
 
     _opponentCanTakeOurFlag(state) {

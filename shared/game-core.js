@@ -79,11 +79,11 @@ export function startGame(gameState) {
     
     // Reset AI state
     aiEngine.resetMemory();
-    aiBeliefs.init(gameState);
     
     // Place pieces
     placePlayerPieces(gameState);
     placeComputerPieces(gameState);
+    aiBeliefs.init(gameState);
 }
 
 /**

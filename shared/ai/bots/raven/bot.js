@@ -258,8 +258,14 @@ const ravenBot = {
         for (const m of orderedMoves) {
             if (Date.now() - startTime > timeLimit) break;
 
-            const newState = this._makeVirtualMove(state, m);
-            const score = -this._alphaBeta(newState, depth - 1, -Infinity, Infinity, false, startTime, timeLimit);
+            const score = this._expectedSearchMove(
+                state,
+                m,
+                depth - 1,
+                false,
+                startTime,
+                timeLimit
+            );
 
             if (score > bestScore) {
                 bestScore = score;
@@ -273,6 +279,9 @@ const ravenBot = {
     _alphaBeta(state, depth, alpha, beta, isMaximizing, startTime, timeLimit) {
         if (Date.now() - startTime > timeLimit) {
             return this._quickEvaluate(state);
+        }
+        if (aiSearch.getTerminalOutcome(state)) {
+            return this._evaluatePosition(state);
         }
 
         if (depth === 0) {
@@ -294,8 +303,15 @@ const ravenBot = {
             let value = -Infinity;
             for (const m of ordered) {
                 if (Date.now() - startTime > timeLimit) break;
-                const newState = this._makeVirtualMove(state, m);
-                value = Math.max(value, -this._alphaBeta(newState, depth - 1, -beta, -alpha, false, startTime, timeLimit));
+                const score = this._expectedSearchMove(
+                    state,
+                    m,
+                    depth - 1,
+                    false,
+                    startTime,
+                    timeLimit
+                );
+                value = Math.max(value, score);
                 alpha = Math.max(alpha, value);
                 if (alpha >= beta) break;
             }
@@ -304,13 +320,41 @@ const ravenBot = {
             let value = Infinity;
             for (const m of ordered) {
                 if (Date.now() - startTime > timeLimit) break;
-                const newState = this._makeVirtualMove(state, m);
-                value = Math.min(value, -this._alphaBeta(newState, depth - 1, -beta, -alpha, true, startTime, timeLimit));
+                const score = this._expectedSearchMove(
+                    state,
+                    m,
+                    depth - 1,
+                    true,
+                    startTime,
+                    timeLimit
+                );
+                value = Math.min(value, score);
                 beta = Math.min(beta, value);
                 if (alpha >= beta) break;
             }
             return value;
         }
+    },
+
+    _expectedSearchMove(state, move, depth, isMaximizing, startTime, timeLimit) {
+        const outcomes = aiSearch.getMoveOutcomes(state, move);
+        if (outcomes.length === 0) {
+            return this._evaluatePosition(state);
+        }
+        let score = 0;
+        for (const outcome of outcomes) {
+            const value = this._alphaBeta(
+                outcome.state,
+                depth,
+                -Infinity,
+                Infinity,
+                isMaximizing,
+                startTime,
+                timeLimit
+            );
+            score += outcome.probability * value;
+        }
+        return score;
     },
 
     _orderMoves(moves, state) {
@@ -326,88 +370,25 @@ const ravenBot = {
         });
     },
 
-    /**
-     * Raven now properly delegates virtual moves to the shared engine.
-     * This fixes the critical bug where the entire alpha-beta search was
-     * throwing and falling back to weak heuristics.
-     */
-    _makeVirtualMove(state, move) {
-        if (typeof aiEngine !== 'undefined' && aiEngine && typeof aiEngine.makeVirtualMove === 'function') {
-            try {
-                return aiEngine.makeVirtualMove(state, move);
-            } catch (e) {
-                // fall through to local implementation
-            }
-        }
-        // Minimal safe local clone (rare fallback)
-        const newState = JSON.parse(JSON.stringify(state));
-        // Rebuild board
-        newState.board = [];
-        for (let r = 0; r < 6; r++) {
-            newState.board[r] = [];
-            for (let c = 0; c < 8; c++) newState.board[r][c] = null;
-        }
-        [...(newState.playerPieces || []), ...(newState.aiPieces || [])].forEach(p => {
-            if (!p.removed && p.row >= 0 && p.col >= 0) {
-                newState.board[p.row][p.col] = p;
-            }
-        });
-
-        const piece = newState.board[move.piece.row] && newState.board[move.piece.row][move.piece.col];
-        if (!piece) return newState;
-
-        const target = newState.board[move.row] && newState.board[move.row][move.col];
-
-        if (target) {
-            if (piece.type === 'flag' && target.owner !== piece.owner) return newState;
-            const result = (typeof aiEngine !== 'undefined' && aiEngine.resolveBattle)
-                ? aiEngine.resolveBattle(
-                    piece.type === 'piece' ? piece.pieceType : piece.type,
-                    target.type === 'piece' ? target.pieceType : target.type
-                )
-                : 'draw';
-
-            if (result === 'win') {
-                // remove target
-                if (target.owner === 'player') {
-                    const idx = newState.playerPieces.findIndex(pp => pp.id === target.id);
-                    if (idx >= 0) newState.playerPieces.splice(idx, 1);
-                } else {
-                    const idx = newState.aiPieces.findIndex(pp => pp.id === target.id);
-                    if (idx >= 0) newState.aiPieces.splice(idx, 1);
-                }
-                newState.board[piece.row][piece.col] = null;
-                piece.row = move.row;
-                piece.col = move.col;
-                newState.board[move.row][move.col] = piece;
-            } else if (result === 'lose') {
-                // remove piece
-                if (piece.owner === 'player') {
-                    const idx = newState.playerPieces.findIndex(pp => pp.id === piece.id);
-                    if (idx >= 0) newState.playerPieces.splice(idx, 1);
-                } else {
-                    const idx = newState.aiPieces.findIndex(pp => pp.id === piece.id);
-                    if (idx >= 0) newState.aiPieces.splice(idx, 1);
-                }
-            }
-        } else {
-            newState.board[piece.row][piece.col] = null;
-            piece.row = move.row;
-            piece.col = move.col;
-            newState.board[move.row][move.col] = piece;
-        }
-        return newState;
-    },
-
     _evaluatePosition(state) {
         // Strong custom evaluation for Raven - "Cynical & Calculating" version
+        const terminal = aiSearch.getTerminalOutcome(state);
+        if (terminal) {
+            if (terminal.outcome === 'win') {
+                return 1000000;
+            }
+            if (terminal.outcome === 'lose') {
+                return -1000000;
+            }
+            return 0;
+        }
         let score = 0;
 
         const myPieces = state.aiPieces.filter(p => !p.removed && p.row >= 0);
         const enemyPieces = state.playerPieces.filter(p => !p.removed && p.row >= 0);
 
         const myFlag = myPieces.find(p => p.type === FLAG);
-        const enemyFlag = enemyPieces.find(p => p.type === FLAG);
+        const enemyFlagCandidates = aiSearch.getFlagCandidates(state);
 
         // === 1. EXTREME Flag Safety ===
         if (myFlag) {
@@ -468,7 +449,8 @@ const ravenBot = {
         }
 
         // === 3. Flag Pressure (with coordination awareness) ===
-        if (enemyFlag) {
+        for (const candidate of enemyFlagCandidates) {
+            const enemyFlag = candidate.piece;
             let pressure = 0;
             for (const p of myPieces) {
                 if (p.type === FLAG || p.type === TRAP) continue;
@@ -482,7 +464,7 @@ const ravenBot = {
                     pressure += piecePressure;
                 }
             }
-            score += pressure;
+            score += candidate.probability * pressure;
         }
 
         // === 4. Strong Coordination Bonus ===
@@ -494,6 +476,16 @@ const ravenBot = {
 
     _quickEvaluate(state) {
         // Fast evaluation for deep search
+        const terminal = aiSearch.getTerminalOutcome(state);
+        if (terminal) {
+            if (terminal.outcome === 'win') {
+                return 1000000;
+            }
+            if (terminal.outcome === 'lose') {
+                return -1000000;
+            }
+            return 0;
+        }
         let score = 0;
         const myPieces = state.aiPieces.filter(p => !p.removed && p.row >= 0);
         const enemyPieces = state.playerPieces.filter(p => !p.removed && p.row >= 0);

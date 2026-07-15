@@ -1,8 +1,8 @@
 /**
  * 🦉 Сова — classical chess-engine port.
  *
- * Playstyle: no Bayesian beliefs, no opponent modelling — a pure, deep
- * alpha-beta searcher. What makes her feel different from Енот:
+ * Playstyle: a pure, deep expectiminimax searcher with a shared public-belief
+ * model for hidden combat outcomes. What makes her feel different from Енот:
  *   - iterative deepening with a time budget,
  *   - transposition table (Zobrist-like hash of state) shared across depths,
  *   - move ordering: TT best move → captures ranked MVV-LVA → killer moves
@@ -10,9 +10,8 @@
  *   - quiescence search at the leaves (captures-only) to dodge horizon
  *     effects on attacks.
  *
- * Сова сильнее Енота за счёт глубины и порядка ходов, но уступает Ёжику,
- * потому что не умеет анализировать скрытые фигуры — она относится к ним
- * как к нейтральной "серой материи" с штрафами за риск в evaluate.
+ * Hidden identities are never read directly. Every attack on an unknown piece
+ * is expanded into legal outcomes weighted by information available to the bot.
  */
 
 // === MANDATORY bot-api guard (must run before the object literal)
@@ -26,8 +25,8 @@ const owlBot = {
     emoji: '🦉',
     avatar: 'js/bots/owl/avatar-min.png',
     shortDescription: 'Классический шахматный движок',
-    longDescription: 'Глубокий α-β по видимой доске. Скрытые фигуры соперника не оценивает.',
-    algorithmLabel: 'α-β + транспозиция',
+    longDescription: 'Глубокий вероятностный α-β по видимой доске с честной оценкой скрытых столкновений.',
+    algorithmLabel: 'Expectiminimax + транспозиция',
     // Certified through RPSBotAPI.defineBot (mandatory common rulebook + interface)
     tier: 'hard',
     stars: 3,
@@ -202,7 +201,7 @@ const owlBot = {
             return { score: this._quiescence(state, alpha, beta, isMax, this.QUIESCENCE_MAX), move: null };
         }
         
-        const hashKey = aiEngine.getStateHash(state) + '|' + (isMax ? 'M' : 'm');
+        const hashKey = `${aiEngine.getStateHash(state)}|${isMax ? 'M' : 'm'}`;
         const ttEntry = this._tt.get(hashKey);
         let ttMove = null;
         if (ttEntry && ttEntry.depth >= depth) {
@@ -232,16 +231,20 @@ const owlBot = {
         
         let bestScore = isMax ? -Infinity : Infinity;
         let bestMove = null;
-        let originalAlpha = alpha;
-        let originalBeta = beta;
+        const originalAlpha = alpha;
+        const originalBeta = beta;
         
         for (const move of orderedMoves) {
             if (this._timeUp()) {
                 break;
             }
-            const newState = aiEngine.makeVirtualMove(state, move);
-            const child = this._search(newState, depth - 1, alpha, beta, !isMax, ply + 1);
-            const score = child.score;
+            const score = this._expectedSearchMove(
+                state,
+                move,
+                depth - 1,
+                !isMax,
+                ply + 1
+            );
             
             if (isMax) {
                 if (score > bestScore) {
@@ -279,6 +282,26 @@ const owlBot = {
         
         return { score: bestScore, move: bestMove };
     },
+
+    _expectedSearchMove(state, move, depth, isMax, ply) {
+        const outcomes = aiSearch.getMoveOutcomes(state, move);
+        if (outcomes.length === 0) {
+            return aiEngine.evaluatePositionV2(state);
+        }
+        let expected = 0;
+        for (const outcome of outcomes) {
+            const child = this._search(
+                outcome.state,
+                depth,
+                -Infinity,
+                Infinity,
+                isMax,
+                ply
+            );
+            expected += outcome.probability * child.score;
+        }
+        return expected;
+    },
     
     _quiescence(state, alpha, beta, isMax, depthLeft) {
         if (this._timeUp()) {
@@ -315,8 +338,12 @@ const owlBot = {
             if (this._timeUp()) {
                 break;
             }
-            const newState = aiEngine.makeVirtualMove(state, move);
-            const score = this._quiescence(newState, alpha, beta, !isMax, depthLeft - 1);
+            const score = this._expectedQuiescenceMove(
+                state,
+                move,
+                !isMax,
+                depthLeft - 1
+            );
             if (isMax) {
                 if (score >= beta) {
                     return beta;
@@ -334,6 +361,25 @@ const owlBot = {
             }
         }
         return isMax ? alpha : beta;
+    },
+
+    _expectedQuiescenceMove(state, move, isMax, depthLeft) {
+        const outcomes = aiSearch.getMoveOutcomes(state, move);
+        if (outcomes.length === 0) {
+            return aiEngine.evaluatePositionV2(state);
+        }
+        let expected = 0;
+        for (const outcome of outcomes) {
+            const score = this._quiescence(
+                outcome.state,
+                -Infinity,
+                Infinity,
+                isMax,
+                depthLeft
+            );
+            expected += outcome.probability * score;
+        }
+        return expected;
     },
     
     // ==========================================================================
@@ -389,17 +435,28 @@ const owlBot = {
             return 0;
         }
         // MVV-LVA: most valuable victim first, least valuable attacker breaks ties.
-        const victimValue = this._pieceValue(target);
-        const attackerValue = this._pieceValue(move.piece);
+        const victimValue = this._pieceValue(target, state);
+        const attackerValue = this._pieceValue(move.piece, state);
         // Reveal reward: capturing a hidden piece is more valuable information-wise
         // than capturing a revealed one, so we add a small bonus for unknown targets.
         const revealBonus = target.revealed ? 0 : 20;
         return victimValue * 10 - attackerValue + revealBonus;
     },
     
-    _pieceValue(piece) {
+    _pieceValue(piece, state) {
         if (!piece) {
             return 0;
+        }
+        if (!piece.revealed
+            && piece.owner === PLAYER) {
+            const distribution = aiSearch.getPieceDistribution(state, piece);
+            return distribution.flag * 1000
+                + distribution.trap * 400
+                + (
+                    distribution.rock
+                    + distribution.paper
+                    + distribution.scissors
+                ) * 100;
         }
         if (piece.type === FLAG) {
             return 1000;

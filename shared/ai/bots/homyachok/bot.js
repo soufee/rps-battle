@@ -186,17 +186,13 @@ const homyachokBot = {
             }
 
             const move = limitedMoves[i];
-            const newState = this._makeVirtualMove(state, move);
-
-            let score;
-            if (i === 0) {
-                score = -this._pvSearch(newState, depth - 1, -beta, -alpha, true, startTime);
-            } else {
-                score = -this._pvSearch(newState, depth - 1, -alpha - 1, -alpha, true, startTime);
-                if (score > alpha && score < beta) {
-                    score = -this._pvSearch(newState, depth - 1, -beta, -score, true, startTime);
-                }
-            }
+            const score = this._expectedPVMove(
+                state,
+                move,
+                depth - 1,
+                false,
+                startTime
+            );
 
             this._searchStats.nodes++;
 
@@ -215,53 +211,76 @@ const homyachokBot = {
         if (Date.now() - startTime > this.TIME_LIMIT_MS) {
             return this._evaluatePosition(state);
         }
+        if (aiSearch.getTerminalOutcome(state)) {
+            return this._evaluatePosition(state);
+        }
 
         if (depth === 0) {
             return this._quiescenceSearch(state, alpha, beta, isMaximizing, startTime, this.QUIESCENCE_DEPTH);
         }
 
-        const pieces = isMaximizing
-            ? aiEngine.getActivePieces(state)
-            : state.playerPieces.filter(p => !p.removed && p.row >= 0 && !p.immobilized);
-
-        const moves = aiEngine.getAllFilteredMoves(state, pieces);
-
+        const owner = isMaximizing ? COMPUTER : PLAYER;
+        const moves = this._orderMovesByHeuristic(
+            state,
+            this._buildSearchContext(state),
+            owner
+        );
         if (moves.length === 0) {
-            return isMaximizing ? -100000 : 100000;
+            return this._evaluatePosition(state);
         }
-
-        const orderedMoves = this._orderMovesByHeuristic(state, this._buildSearchContext(state));
-
-        let firstMove = true;
-        for (const move of orderedMoves.slice(0, this.TOP_MOVES_FOR_LATE_PLY + depth * 2)) {
+        const limitedMoves = moves.slice(
+            0,
+            this.TOP_MOVES_FOR_LATE_PLY
+                + depth * 2
+        );
+        let bestScore = isMaximizing ? -Infinity : Infinity;
+        for (const move of limitedMoves) {
             if (Date.now() - startTime > this.TIME_LIMIT_MS) {
                 break;
             }
-
-            const newState = this._makeVirtualMove(state, move);
-            let score;
-
-            if (firstMove) {
-                score = -this._pvSearch(newState, depth - 1, -beta, -alpha, !isMaximizing, startTime);
-                firstMove = false;
-            } else {
-                score = -this._pvSearch(newState, depth - 1, -alpha - 1, -alpha, !isMaximizing, startTime);
-                if (score > alpha && score < beta) {
-                    score = -this._pvSearch(newState, depth - 1, -beta, -score, !isMaximizing, startTime);
-                }
-            }
-
+            const score = this._expectedPVMove(
+                state,
+                move,
+                depth - 1,
+                !isMaximizing,
+                startTime
+            );
             this._searchStats.nodes++;
-
-            if (score >= beta) {
-                this._searchStats.cutoffs++;
-                return beta;
+            if (isMaximizing) {
+                bestScore = Math.max(bestScore, score);
+                alpha = Math.max(alpha, bestScore);
+            } else {
+                bestScore = Math.min(bestScore, score);
+                beta = Math.min(beta, bestScore);
             }
-
-            alpha = Math.max(alpha, score);
+            if (beta <= alpha) {
+                this._searchStats.cutoffs++;
+                break;
+            }
         }
+        return Number.isFinite(bestScore)
+            ? bestScore
+            : this._evaluatePosition(state);
+    },
 
-        return alpha;
+    _expectedPVMove(state, move, depth, isMaximizing, startTime) {
+        const outcomes = aiSearch.getMoveOutcomes(state, move);
+        if (outcomes.length === 0) {
+            return this._evaluatePosition(state);
+        }
+        let score = 0;
+        for (const outcome of outcomes) {
+            const value = this._pvSearch(
+                outcome.state,
+                depth,
+                -Infinity,
+                Infinity,
+                isMaximizing,
+                startTime
+            );
+            score += outcome.probability * value;
+        }
+        return score;
     },
 
     _quiescenceSearch(state, alpha, beta, isMaximizing, startTime, qDepth) {
@@ -269,7 +288,8 @@ const homyachokBot = {
 
         const standPat = this._evaluatePosition(state);
 
-        if (qDepth <= 0) {
+        if (qDepth <= 0
+            || aiSearch.getTerminalOutcome(state)) {
             return standPat;
         }
 
@@ -292,8 +312,13 @@ const homyachokBot = {
                 break;
             }
 
-            const newState = this._makeVirtualMove(state, capture);
-            const score = -this._quiescenceSearch(newState, -beta, -alpha, !isMaximizing, startTime, qDepth - 1);
+            const score = this._expectedQuiescenceMove(
+                state,
+                capture,
+                !isMaximizing,
+                startTime,
+                qDepth - 1
+            );
 
             if (isMaximizing) {
                 if (score >= beta) {
@@ -309,6 +334,26 @@ const homyachokBot = {
         }
 
         return isMaximizing ? alpha : beta;
+    },
+
+    _expectedQuiescenceMove(state, move, isMaximizing, startTime, qDepth) {
+        const outcomes = aiSearch.getMoveOutcomes(state, move);
+        if (outcomes.length === 0) {
+            return this._evaluatePosition(state);
+        }
+        let score = 0;
+        for (const outcome of outcomes) {
+            const value = this._quiescenceSearch(
+                outcome.state,
+                -Infinity,
+                Infinity,
+                isMaximizing,
+                startTime,
+                qDepth
+            );
+            score += outcome.probability * value;
+        }
+        return score;
     },
 
     // =========================================================================
@@ -467,6 +512,16 @@ const homyachokBot = {
     // =========================================================================
 
     _evaluatePosition(state) {
+        const terminal = aiSearch.getTerminalOutcome(state);
+        if (terminal) {
+            if (terminal.outcome === 'win') {
+                return 1000000;
+            }
+            if (terminal.outcome === 'lose') {
+                return -1000000;
+            }
+            return 0;
+        }
         let score = 0;
         const ctx = this._buildSearchContext(state);
 
@@ -673,16 +728,20 @@ const homyachokBot = {
     },
 
     _evaluateFlagPressure(state, ctx) {
-        if (!ctx.enemyFlag) return 0;
-
         let score = 0;
         const myPieces = aiEngine.getActivePieces(state);
-
-        for (const p of myPieces) {
-            if (p.type === FLAG || p.type === TRAP) continue;
-            const dist = this._chebyshev(p, ctx.enemyFlag);
-            if (dist <= 3) {
-                score += (4 - dist) * this.WEIGHTS.AGGRESSION;
+        for (const candidate of ctx.enemyFlagCandidates) {
+            for (const p of myPieces) {
+                if (p.type === FLAG
+                    || p.type === TRAP) {
+                    continue;
+                }
+                const dist = this._chebyshev(p, candidate.piece);
+                if (dist <= 3) {
+                    score += candidate.probability
+                        * (4 - dist)
+                        * this.WEIGHTS.AGGRESSION;
+                }
             }
         }
 
@@ -697,10 +756,12 @@ const homyachokBot = {
 
         let score = 0;
 
-        if (ctx.enemyFlag && !ctx.enemyFlag.removed) {
+        for (const candidate of ctx.enemyFlagCandidates) {
             for (const p of myPieces) {
-                const dist = this._chebyshev(p, ctx.enemyFlag);
-                score += (6 - Math.min(dist, 6)) * 10;
+                const dist = this._chebyshev(p, candidate.piece);
+                score += candidate.probability
+                    * (6 - Math.min(dist, 6))
+                    * 10;
             }
         }
 
@@ -728,17 +789,37 @@ const homyachokBot = {
     //  MOVE ORDERING AND SELECTION
     // =========================================================================
 
-    _orderMovesByHeuristic(state, ctx) {
-        const myPieces = aiEngine.getActivePieces(state);
-        const moves = aiEngine.getAllFilteredMoves(state, myPieces);
+    _orderMovesByHeuristic(state, ctx, owner = COMPUTER) {
+        const pieces = owner === COMPUTER
+            ? aiEngine.getActivePieces(state)
+            : state.playerPieces.filter(piece => {
+                return !piece.removed
+                    && piece.row >= 0
+                    && !piece.immobilized;
+            });
+        const moves = aiEngine.getAllFilteredMoves(state, pieces);
 
         const scored = moves.map(move => ({
             move,
-            score: this._scoreMoveForOrdering(state, move, ctx)
+            score: owner === COMPUTER
+                ? this._scoreMoveForOrdering(state, move, ctx)
+                : this._scoreOpponentMoveForOrdering(state, move)
         }));
 
         scored.sort((a, b) => b.score - a.score);
         return scored.map(s => s.move);
+    },
+
+    _scoreOpponentMoveForOrdering(state, move) {
+        const target = state.board[move.row] && state.board[move.row][move.col];
+        if (!target
+            || target.owner !== COMPUTER) {
+            return 0;
+        }
+        if (target.type === FLAG) {
+            return 10000;
+        }
+        return 500;
     },
 
     _scoreMoveForOrdering(state, move, ctx) {
@@ -947,17 +1028,15 @@ const homyachokBot = {
     // =========================================================================
 
     _buildSearchContext(state) {
+        const enemyFlagCandidates = aiSearch.getFlagCandidates(state);
         return {
             myFlag: state.aiPieces.find(p => p.type === FLAG && !p.removed),
             enemyFlag: state.playerPieces.find(p => p.type === FLAG && !p.removed),
+            enemyFlagCandidates,
             topSuspect: this._deduceFlag(state).candidates[0] || null,
             revealedEnemies: state.playerPieces.filter(p => p.revealed && !p.removed),
             hiddenEnemies: state.playerPieces.filter(p => !p.revealed && !p.removed)
         };
-    },
-
-    _makeVirtualMove(state, move) {
-        return aiEngine.makeVirtualMove(state, move);
     },
 
     _chebyshev(a, b) {

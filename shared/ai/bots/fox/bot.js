@@ -1021,16 +1021,23 @@ const foxBot = {
     },
 
     _opponentReplyAdjustment(state, move, ctx) {
-        let nextState;
-        try {
-            nextState = aiEngine.makeVirtualMove(state, move);
-        } catch (e) {
+        const outcomes = aiSearch.getMoveOutcomes(state, move);
+        if (outcomes.length === 0) {
             return 0;
         }
-        if (!nextState) {
-            return 0;
+        let adjustment = 0;
+        for (const outcome of outcomes) {
+            const score = this._scoreOpponentReplies(outcome.state, move);
+            adjustment += outcome.probability * score;
         }
+        return adjustment;
+    },
 
+    _scoreOpponentReplies(nextState, move) {
+        const terminal = aiSearch.getTerminalOutcome(nextState);
+        if (terminal) {
+            return terminal.outcome === 'lose' ? -10000 : 0;
+        }
         const ourFlag = nextState.aiPieces.find(p =>
             p.type === FLAG && !p.removed
         );
@@ -1046,9 +1053,17 @@ const foxBot = {
         let worst = 0;
         const limit = Math.min(this.LOOKAHEAD_OPPONENT_K * 4, enemyMoves.length);
         const sample = enemyMoves.slice(0, limit);
+        const movedPiece = nextState.aiPieces.find(piece => {
+            return piece.id === move.piece.id;
+        }) || move.piece;
 
         for (const em of sample) {
-            const threat = this._scoreEnemyThreat(nextState, em, ourFlag, move.piece);
+            const threat = this._scoreEnemyThreat(
+                nextState,
+                em,
+                ourFlag,
+                movedPiece
+            );
             if (threat < worst) {
                 worst = threat;
             }

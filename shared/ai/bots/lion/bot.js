@@ -1,29 +1,19 @@
 /**
  * 🦁 Львёнок — flat Information-Set Monte-Carlo bot.
  *
- * Классический ISMCTS в упрощённой форме:
- *   1. Сначала спрашиваем aiTacticalCore — есть ли "обязательный" ход
- *      (захват флага, защита, гарантированный kill, охота на
- *      последнюю скрытую). Если есть — делаем его. Это страхует Льва
- *      от того, что Монте-Карло "усреднит" немедленный выигрыш.
- *   2. Выбираем root-кандидатов: top-K по evaluateMoveV2 с учётом
- *      антикластерного штрафа плюс любой гарантированный kill.
- *   3. Для каждого root-хода гоняем N симуляций. Перед каждой симуляцией
- *      сэмплируем типы скрытых вражеских фигур БАЙЕСОВСКИ — по
- *      апостериорному распределению «сколько ещё остаётся каждого
- *      типа» (inferTypeCounts). Это точнее, чем равномерное 1/3/3.
- *   4. Играем rollout: на своём ходу предпочитаем tactical-core
- *      (мини-правила) с ε-исследованием, на ходу соперника — лёгкая
- *      эвристика (не лезет в проигрыш).
- *   5. Итоговую позицию оцениваем через evaluatePositionV2.
- *   6. Выбираем root-ход с максимальным средним скором.
+ * Simplified flat ISMCTS:
+ *   1. Ask aiTacticalCore for mandatory flag, defence, kill, or hunt moves.
+ *   2. Rank root candidates with evaluateMoveV2 and anti-clustering pressure.
+ *   3. Build a seeded world for every trial from public Bayesian beliefs,
+ *      preserving exactly one hidden flag and one hidden trap when possible.
+ *   4. Sample every combat through the shared fog-safe outcome model.
+ *   5. Roll out both sides with lightweight tactical policies.
+ *   6. Evaluate final positions and choose the highest mean root score.
  *
- * Flag deducer: "Bayesian-ish" — как Лис/Волк, но калиброванный под
- * симуляционный подход (stillness + позиция + окружение).
+ * Its flag deducer combines stillness, position, and local formation signals.
  *
- * Отличие от Ёжика (minimax + beliefs) и Совы (alpha-beta): стохастическая
- * усреднённая оценка. Лев смел и терпим к неопределённости, но иногда
- * подставляется — цена Монте-Карло.
+ * Unlike deterministic minimax bots, Lion accepts uncertainty and compares
+ * moves by their sampled mean value.
  *
  * Certified by RPSBotAPI (mandatory base rules + contract).
  */
@@ -39,91 +29,25 @@ const lionBot = (() => {
     const SIMULATIONS_PER_ROOT = 80;
     const ROLLOUT_DEPTH = 6;
     const EPSILON = 0.10;
-    const ASSUMED_TOTAL_PIECES = 14;
-    const ASSUMED_DISTRIBUTION = { rock: 5, paper: 5, scissors: 4 };
     const HUNT_HORIZON = 3;
 
-    function cloneState(state) {
-        const clone = JSON.parse(JSON.stringify(state));
-        clone.board = [];
-        for (let row = 0; row < BOARD_HEIGHT; row++) {
-            clone.board[row] = [];
-            for (let col = 0; col < BOARD_WIDTH; col++) {
-                clone.board[row][col] = null;
-            }
-        }
-        [...clone.playerPieces, ...clone.aiPieces].forEach(piece => {
-            if (!piece.removed && piece.row >= 0 && piece.col >= 0) {
-                clone.board[piece.row][piece.col] = piece;
-            }
-        });
-        return clone;
+    function determinize(state, seed) {
+        return aiSearch.determinizeWorld(state, { seed });
     }
 
-    /**
-     * Infer how many of each type are likely still hidden among the
-     * opponent's unrevealed 'piece' entries. We use a rough prior from the
-     * nominal placement distribution (~5/5/4), then subtract types we've
-     * already seen revealed. Floor at 1 so we never assign zero weight to
-     * a type that might still exist.
-     */
-    function inferTypeCounts(state) {
-        const seen = { rock: 0, paper: 0, scissors: 0 };
-        for (const piece of state.playerPieces) {
-            if (piece.type !== 'piece') {
-                continue;
-            }
-            if (!piece.pieceType) {
-                continue;
-            }
-            if (piece.revealed || piece.removed) {
-                seen[piece.pieceType] = (seen[piece.pieceType] || 0) + 1;
-            }
+    function sampleMoveOutcome(state, move) {
+        const outcomes = aiSearch.getMoveOutcomes(state, move);
+        if (outcomes.length === 0) {
+            return aiSearch.cloneSearchState(state);
         }
-        const counts = {};
-        let total = 0;
-        for (const key of PIECE_TYPES) {
-            counts[key] = Math.max(1, ASSUMED_DISTRIBUTION[key] - seen[key]);
-            total += counts[key];
-        }
-        return { counts, total };
-    }
-
-    function sampleType(counts) {
-        const total = counts.rock + counts.paper + counts.scissors;
-        if (total <= 0) {
-            return PIECE_TYPES[Math.floor(Math.random() * PIECE_TYPES.length)];
-        }
-        let roll = Math.random() * total;
-        for (const key of PIECE_TYPES) {
-            roll -= counts[key] || 0;
+        let roll = Math.random();
+        for (const outcome of outcomes) {
+            roll -= outcome.probability;
             if (roll <= 0) {
-                return key;
+                return outcome.state;
             }
         }
-        return PIECE_TYPES[PIECE_TYPES.length - 1];
-    }
-
-    /**
-     * ISMCTS determinization with Bayesian-ish type weighting:
-     * Each hidden enemy 'piece' gets a pieceType sampled from the
-     * inferred remaining distribution. Flag/trap entries are left alone
-     * (the current engine already stores their true type).
-     */
-    function determinize(state) {
-        const hidden = state.playerPieces.filter(p =>
-            !p.removed
-                && p.row >= 0
-                && p.type === 'piece'
-                && !p.revealed
-        );
-        const { counts } = inferTypeCounts(state);
-        const pool = { ...counts };
-        for (const piece of hidden) {
-            const type = sampleType(pool);
-            piece.pieceType = type;
-            pool[type] = Math.max(1, (pool[type] || 1) - 1);
-        }
+        return outcomes[0].state;
     }
 
     function deduceFlag(state) {
@@ -196,10 +120,11 @@ const lionBot = (() => {
         const scored = [];
         for (const m of moves) {
             const piece = m.piece;
-            if (piece.type === FLAG) {
+            const target = state.board[m.row] && state.board[m.row][m.col];
+            if (piece.type === FLAG
+                && target) {
                 continue;
             }
-            const target = state.board[m.row] && state.board[m.row][m.col];
 
             let score = 0;
 
@@ -293,7 +218,7 @@ const lionBot = (() => {
             if (!move) {
                 break;
             }
-            current = aiEngine.makeVirtualMove(current, move);
+            current = sampleMoveOutcome(current, move);
             turn = turn === COMPUTER ? PLAYER : COMPUTER;
         }
 
@@ -359,9 +284,9 @@ const lionBot = (() => {
                     break;
                 }
 
-                const trial = cloneState(state);
-                determinize(trial);
-                const afterRoot = aiEngine.makeVirtualMove(trial, entry.move);
+                const seed = `${done}|${entry.move.piece.id}|${entry.move.row}|${entry.move.col}|${Math.random()}`;
+                const trial = determinize(state, seed);
+                const afterRoot = sampleMoveOutcome(trial, entry.move);
                 const score = rollout(afterRoot);
                 entry.sum += score;
                 entry.count += 1;
