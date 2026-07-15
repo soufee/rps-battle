@@ -157,6 +157,42 @@ function makeQuietFogState(botId = 'owl') {
     };
 }
 
+function makeStateFromPieces(aiPieces, playerPieces, options = {}) {
+    const board = Array.from(
+        { length: BOARD_HEIGHT },
+        () => new Array(BOARD_WIDTH).fill(null)
+    );
+    for (const current of aiPieces.concat(playerPieces)) {
+        board[current.row][current.col] = current;
+    }
+    return {
+        phase: GAME_CONFIG.PHASES.PLAYING,
+        currentPlayer: COMPUTER,
+        board,
+        aiPieces,
+        playerPieces,
+        selectedPiece: null,
+        battleState: null,
+        botId: 'owl',
+        topBotId: 'owl',
+        bottomBotId: 'rabbit',
+        gameOver: false,
+        lastMove: options.lastMove || null,
+        movesWithoutCapture: options.movesWithoutCapture || 0,
+        devMode: false
+    };
+}
+
+function makePiece(data) {
+    return {
+        pieceType: null,
+        revealed: false,
+        immobilized: false,
+        removed: false,
+        ...data
+    };
+}
+
 function assertLegalMove(view, rawMove, id) {
     const move = sanitizeMove(rawMove);
     assert.ok(move, `${id} returned an invalid move shape`);
@@ -231,6 +267,135 @@ test('owl searches a masked-flag position and returns a legal move', () => {
     assert.equal(aiEngine.isGameOver(view), false);
     assertLegalMove(view, move, 'owl');
     assert.equal(JSON.stringify(view), snapshot);
+});
+
+test('owl treats hidden enemy flags as guesses while reinforcing its own flag', () => {
+    aiEngine.resetMemory();
+    const state = makeQuietFogState();
+    aiBeliefs.init(state);
+    const view = createBotView(state);
+    const hiddenEnemyFlag = view.playerPieces.find(current => {
+        return current.id === 'enemy-flag';
+    });
+    const ownFlag = view.aiPieces.find(current => {
+        return current.id === 'own-flag';
+    });
+    const move = botRegistry.get('owl').move(view);
+    const safeMove = sanitizeMove(move);
+    const actor = view.aiPieces.find(current => {
+        return current.id === safeMove.pieceId;
+    });
+    const before = Math.max(
+        Math.abs(actor.row - ownFlag.row),
+        Math.abs(actor.col - ownFlag.col)
+    );
+    const after = Math.max(
+        Math.abs(safeMove.row - ownFlag.row),
+        Math.abs(safeMove.col - ownFlag.col)
+    );
+
+    assert.equal(hiddenEnemyFlag.type, 'piece');
+    assert.equal(hiddenEnemyFlag.pieceType, null);
+    assert.equal(actor.pieceType, 'rock');
+    assert.ok(after < before);
+    assertLegalMove(view, move, 'owl');
+});
+
+test('owl prefers a revealed attacker for a guaranteed kill', () => {
+    aiEngine.resetMemory();
+    const state = makeStateFromPieces(
+        [
+            makePiece({ id: 'own-flag', type: FLAG, owner: COMPUTER, row: 0, col: 0 }),
+            makePiece({
+                id: 'own-open-paper',
+                type: 'piece',
+                pieceType: 'paper',
+                owner: COMPUTER,
+                row: 2,
+                col: 2,
+                revealed: true
+            }),
+            makePiece({
+                id: 'own-hidden-paper',
+                type: 'piece',
+                pieceType: 'paper',
+                owner: COMPUTER,
+                row: 2,
+                col: 4
+            }),
+            makePiece({ id: 'own-trap', type: 'trap', owner: COMPUTER, row: 0, col: 1 })
+        ],
+        [
+            makePiece({ id: 'enemy-flag', type: FLAG, owner: PLAYER, row: 5, col: 7 }),
+            makePiece({
+                id: 'enemy-rock',
+                type: 'piece',
+                pieceType: 'rock',
+                owner: PLAYER,
+                row: 2,
+                col: 3,
+                revealed: true
+            })
+        ]
+    );
+    aiBeliefs.init(state);
+    const view = createBotView(state);
+    const rawMove = botRegistry.get('owl').move(view);
+    const move = sanitizeMove(rawMove);
+
+    assert.equal(move.pieceId, 'own-open-paper');
+    assert.equal(move.row, 2);
+    assert.equal(move.col, 3);
+    assertLegalMove(view, rawMove, 'owl');
+});
+
+test('owl probes a hidden enemy that declined to attack its revealed piece', () => {
+    aiEngine.resetMemory();
+    const state = makeStateFromPieces(
+        [
+            makePiece({ id: 'own-flag', type: FLAG, owner: COMPUTER, row: 0, col: 0 }),
+            makePiece({
+                id: 'own-open-paper',
+                type: 'piece',
+                pieceType: 'paper',
+                owner: COMPUTER,
+                row: 2,
+                col: 2,
+                revealed: true
+            }),
+            makePiece({ id: 'own-trap', type: 'trap', owner: COMPUTER, row: 0, col: 1 })
+        ],
+        [
+            makePiece({ id: 'enemy-flag', type: FLAG, owner: PLAYER, row: 5, col: 7 }),
+            makePiece({
+                id: 'enemy-passive-hidden',
+                type: 'piece',
+                pieceType: 'rock',
+                owner: PLAYER,
+                row: 2,
+                col: 3
+            }),
+            makePiece({
+                id: 'enemy-moving-hidden',
+                type: 'piece',
+                pieceType: 'scissors',
+                owner: PLAYER,
+                row: 3,
+                col: 3
+            }),
+            makePiece({ id: 'enemy-trap', type: 'trap', owner: PLAYER, row: 5, col: 6 })
+        ],
+        { lastMove: { from: [4, 4], to: [3, 3] } }
+    );
+    aiBeliefs.init(state);
+    const view = createBotView(state);
+    const rawMove = botRegistry.get('owl').move(view);
+    const move = sanitizeMove(rawMove);
+
+    assert.equal(move.pieceId, 'own-open-paper');
+    assert.equal(move.row, 2);
+    assert.equal(move.col, 3);
+    assertLegalMove(view, rawMove, 'owl');
 });
 
 test('adapted search bots handle quiet masked-flag positions', () => {
